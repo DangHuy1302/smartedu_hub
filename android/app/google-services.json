@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "681946323599",
+    "project_id": "smartedu-hub-b5459",
+    "storage_bucket": "smartedu-hub-b5459.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:681946323599:android:ad6250d6307ea7c7e66efa",
+        "android_client_info": {
+          "package_name": "com.g5.smartedu.smartedu_hub"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyASJN_U9O-H8sf4-ADTDB0IuHO7JCfJTG8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
