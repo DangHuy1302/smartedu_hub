@@ -1,7 +1,23 @@
 import 'package:flutter/material.dart';
+import '../services/google_sign_in_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  late Stream<User?> _authStream;
+  final GoogleSignInService _googleSignInService = GoogleSignInService();
+
+  @override
+  void initState() {
+    super.initState();
+    _authStream = _googleSignInService.authStateChanges;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -27,26 +43,57 @@ class HomeScreen extends StatelessWidget {
         backgroundColor: const Color(0xFF1E88E5), // Xanh biển đậm
         elevation: 2,
         actions: [
-          // THANH ĐIỀU HƯỚNG (NAVBAR) - Chỉ hiện trên màn hình máy tính rộng
+          
           if (isDesktop) ...[
             _navButton(context, 'Bản đồ Đặt chỗ', '/booking'),
             _navButton(context, 'Phòng Pomodoro', '/pomodoro'),
             _navButton(context, 'Máy quét OCR', '/ocr'),
             _navButton(context, 'Kho Audio', '/docs'),
-          ],
-          const SizedBox(width: 24),
-          // Avatar góc phải
-          const CircleAvatar(
-            backgroundColor: Colors.white,
-            child: Text(
-              'H',
-              style: TextStyle(
-                color: Color(0xFF1E88E5),
-                fontWeight: FontWeight.bold,
-              ),
+            // USER AVATAR or LOGIN BUTTON
+            StreamBuilder<User?>(
+              stream: _authStream,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 8.0),
+                    child: Center(
+                      child: SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      ),
+                    ),
+                  );
+                }
+
+                if (snapshot.hasData && snapshot.data != null) {
+                  // User is logged in - Show Avatar
+                  final user = snapshot.data!;
+                  return _buildUserAvatar(context, user);
+                } else {
+                  // User is not logged in - Show Login Button
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                    child: TextButton.icon(
+                      onPressed: () {
+                        Navigator.pushNamed(context, '/auth');
+                      },
+                      icon: const Icon(Icons.login, color: Colors.white),
+                      label: const Text(
+                        'Đăng nhập',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ),
+                  );
+                }
+              },
             ),
-          ),
-          const SizedBox(width: 24),
+          
+          ],
         ],
       ),
       body: Container(
@@ -71,7 +118,7 @@ class HomeScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'Xin chào, Đăng Huy! 👋',
+                    'Xin chào, 👋',
                     style: TextStyle(
                       fontSize: 32,
                       fontWeight: FontWeight.bold,
@@ -183,8 +230,8 @@ class HomeScreen extends StatelessWidget {
           context,
         ).showSnackBar(SnackBar(content: Text('Đang mở $title')));
       },
-      hoverColor: color.withOpacity(
-        0.05,
+      hoverColor: color.withValues(
+        alpha: 0.05,
       ), // Hiệu ứng sáng lên khi lướt chuột qua
       borderRadius: BorderRadius.circular(24),
       child: Container(
@@ -193,7 +240,7 @@ class HomeScreen extends StatelessWidget {
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
-              color: color.withOpacity(0.15),
+              color: color.withValues(alpha: 0.15),
               spreadRadius: 2,
               blurRadius: 15,
               offset: const Offset(0, 8),
@@ -206,7 +253,7 @@ class HomeScreen extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
+                color: color.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
               child: Icon(icon, size: 48, color: color),
@@ -222,6 +269,70 @@ class HomeScreen extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  // Widget: User Avatar with Dropdown Menu
+  Widget _buildUserAvatar(BuildContext context, User user) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12.0),
+      child: PopupMenuButton<String>(
+        onSelected: (value) async {
+          if (value == 'logout') {
+            await _googleSignInService.signOut();
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Đã đăng xuất')),
+              );
+            }
+          } else if (value == 'profile') {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Mở trang hồ sơ')),
+            );
+          }
+        },
+        itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+          PopupMenuItem<String>(
+            value: 'profile',
+            child: Row(
+              children: [
+                const Icon(Icons.person, color: Color(0xFF1E88E5)),
+                const SizedBox(width: 12),
+                Text(user.displayName ?? 'Hồ sơ'),
+              ],
+            ),
+          ),
+          const PopupMenuDivider(),
+          PopupMenuItem<String>(
+            value: 'logout',
+            child: const Row(
+              children: [
+                Icon(Icons.logout, color: Colors.red),
+                SizedBox(width: 12),
+                Text('Đăng xuất', style: TextStyle(color: Colors.red)),
+              ],
+            ),
+          ),
+        ],
+        child: CircleAvatar(
+          radius: 20,
+          backgroundColor: Colors.white,
+          backgroundImage: user.photoURL != null
+              ? NetworkImage(user.photoURL!)
+              : null,
+          child: user.photoURL == null
+              ? Text(
+                  (user.displayName ?? user.email ?? 'U')
+                      .substring(0, 1)
+                      .toUpperCase(),
+                  style: const TextStyle(
+                    color: Color(0xFF1E88E5),
+                    fontWeight: FontWeight.bold,
+                  ),
+                )
+              : null,
         ),
       ),
     );
