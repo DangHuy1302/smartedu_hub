@@ -21,11 +21,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Tự động nhận diện chiều rộng màn hình để responsive
     double screenWidth = MediaQuery.of(context).size.width;
-    bool isDesktop = screenWidth > 800; // Màn hình PC
+    bool isDesktop = screenWidth > 800;
 
     return Scaffold(
+      backgroundColor: const Color(0xFFF8F9FA), // Xám cực nhạt
       appBar: AppBar(
         title: Row(
           children: [
@@ -40,168 +40,233 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ],
         ),
-        backgroundColor: const Color(0xFF1E88E5), // Xanh biển đậm
-        elevation: 2,
+        backgroundColor: const Color(0xFF1565C0), // Xanh biển đậm
+        elevation: 0,
         actions: [
-          
           if (isDesktop) ...[
             _navButton(context, 'Bản đồ Đặt chỗ', '/booking'),
             _navButton(context, 'Phòng Pomodoro', '/pomodoro'),
             _navButton(context, 'Máy quét OCR', '/ocr'),
-            _navButton(context, 'Kho Audio', '/docs'),
-            // USER AVATAR or LOGIN BUTTON
+            _navButton(context, 'Kho Audio', '/document'),
             StreamBuilder<User?>(
               stream: _authStream,
               builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 8.0),
-                    child: Center(
-                      child: SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor:
-                              AlwaysStoppedAnimation<Color>(Colors.white),
-                        ),
-                      ),
-                    ),
-                  );
-                }
-
                 if (snapshot.hasData && snapshot.data != null) {
-                  // User is logged in - Show Avatar
-                  final user = snapshot.data!;
-                  return _buildUserAvatar(context, user);
+                  return _buildUserAvatar(context, snapshot.data!);
                 } else {
-                  // User is not logged in - Show Login Button
                   return Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 8.0),
                     child: TextButton.icon(
-                      onPressed: () {
-                        Navigator.pushNamed(context, '/auth');
-                      },
+                      onPressed: () => Navigator.pushNamed(context, '/auth'),
                       icon: const Icon(Icons.login, color: Colors.white),
-                      label: const Text(
-                        'Đăng nhập',
-                        style: TextStyle(color: Colors.white),
-                      ),
+                      label: const Text('Đăng nhập', style: TextStyle(color: Colors.white)),
                     ),
                   );
                 }
               },
             ),
-          
           ],
         ],
       ),
-      body: Container(
-        // PHÔNG NỀN (BACKGROUND) - Đổ gradient từ Xanh nhạt sang Trắng cực kỳ hiện đại
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFFE3F2FD), Color(0xFFFFFFFF)],
-          ),
-        ),
-        child: Center(
-          // GIỚI HẠN KÍCH THƯỚC - Giữ nội dung ở giữa màn hình, rộng tối đa 1000px để không bị phình to
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1000),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 24.0,
-                vertical: 40.0,
-              ),
+      body: SingleChildScrollView(
+        child: Column(
+          children: [
+            // 2.2. Màn hình Trang chủ - Lời giới thiệu đầu trang (Hero Section)
+            _buildHeroSection(isDesktop),
+            
+            // MAIN CONTENT (Grid View)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 60.0),
+              constraints: const BoxConstraints(maxWidth: 1200),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Xin chào, 👋',
-                    style: TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1565C0),
-                    ),
+                  StreamBuilder<User?>(
+                    stream: _authStream,
+                    builder: (context, snapshot) {
+                      String name = snapshot.data?.displayName?.split(' ').last ?? 'Sinh Viên';
+                      return Text(
+                        'Xin chào, $name! 👋',
+                        style: const TextStyle(
+                          fontSize: 32,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1565C0),
+                        ),
+                      );
+                    },
                   ),
                   const SizedBox(height: 8),
                   const Text(
                     'Hôm nay bạn muốn tập trung vào việc gì?',
                     style: TextStyle(fontSize: 18, color: Colors.black54),
                   ),
-                  const SizedBox(height: 40),
-                  Expanded(
-                    // LƯỚI TỰ ĐỘNG CO GIÃN - Không dùng cố định 2 cột nữa
-                    // Mỗi card sẽ có chiều rộng tối đa 250px, tự động rớt dòng nếu thu nhỏ màn hình
-                    child: GridView.extent(
-                      maxCrossAxisExtent: 250,
-                      crossAxisSpacing: 24,
-                      mainAxisSpacing: 24,
-                      childAspectRatio: 1.0, // Tỷ lệ vuông cho các khối
-                      children: [
-                        _buildMenuCard(
-                          context,
-                          'Bản đồ Đặt chỗ',
-                          Icons.map_outlined,
-                          Colors.blue,
-                          '/booking',
-                        ),
-                        _buildMenuCard(
-                          context,
-                          'Phòng Pomodoro',
-                          Icons.timer_outlined,
-                          Colors.orange,
-                          '/pomodoro',
-                        ),
-                        _buildMenuCard(
-                          context,
-                          'Máy quét OCR',
-                          Icons.document_scanner_outlined,
-                          Colors.purple,
-                          '/ocr',
-                        ),
-                        _buildMenuCard(
-                          context,
-                          'Kho Podcast',
-                          Icons.headphones_outlined,
-                          Colors.green,
-                          '/docs',
-                        ),
-                      ],
-                    ),
+                  const SizedBox(height: 48),
+                  
+                  // Khối Chức năng chính (Grid View)
+                  GridView.count(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    crossAxisCount: isDesktop ? 4 : (screenWidth > 600 ? 2 : 1),
+                    crossAxisSpacing: 24,
+                    mainAxisSpacing: 24,
+                    childAspectRatio: 0.9,
+                    children: [
+                      _buildMenuCard(
+                        context,
+                        '📍 Bản đồ Đặt chỗ',
+                        'Tìm kiếm và đặt không gian học tập ảo quanh trường.',
+                        Icons.map_outlined,
+                        Colors.blue,
+                        '/booking',
+                      ),
+                      _buildMenuCard(
+                        context,
+                        '⏱️ Phòng học Pomodoro',
+                        'Không gian đếm ngược tập trung, theo dõi trạng thái bạn bè.',
+                        Icons.timer_outlined,
+                        Colors.orange,
+                        '/pomodoro',
+                      ),
+                      _buildMenuCard(
+                        context,
+                        '📷 Máy quét AI (OCR)',
+                        'Chụp/Tải ảnh tài liệu để bóc tách chữ viết và dịch nghĩa.',
+                        Icons.document_scanner_outlined,
+                        Colors.purple,
+                        '/ocr',
+                      ),
+                      _buildMenuCard(
+                        context,
+                        '📁 Kho Tài liệu & Audio',
+                        'Lưu trữ các bài đọc cũ và bật trợ lý phát âm Audio Podcast.',
+                        Icons.headphones_outlined,
+                        Colors.green,
+                        '/document',
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
-          ),
+            
+            // Extra Footer section
+            Container(
+              padding: const EdgeInsets.all(40),
+              color: Colors.white,
+              width: double.infinity,
+              child: const Column(
+                children: [
+                  Text(
+                    'Hệ sinh thái SmartEdu Hub © 2024',
+                    style: TextStyle(color: Colors.black38),
+                  ),
+                  Text(
+                    'Nhóm: G5_Ca4 - Lớp 65HTTT (Đại học Thủy Lợi)',
+                    style: TextStyle(color: Colors.black38),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
-      // Nút Chatbot lơ lửng
+      // 1. NGUYÊN TẮC UX/UI CHUNG - Widget Zoho SalesIQ (Nút Chatbot lơ lửng)
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('Mở Zoho Chatbot')));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Đang khởi động Trợ lý ảo Zoho SalesIQ...')),
+          );
         },
-        backgroundColor: const Color(0xFF1E88E5),
+        backgroundColor: const Color(0xFF1565C0),
+        tooltip: 'Hỗ trợ sinh viên',
         child: const Icon(Icons.chat_bubble_outline, color: Colors.white),
       ),
     );
   }
 
-  // Widget: Các nút chữ trên Thanh Navbar
+  Widget _buildHeroSection(bool isDesktop) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.symmetric(vertical: isDesktop ? 100 : 60, horizontal: 24),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF1565C0), Color(0xFFE3F2FD)],
+        ),
+      ),
+      child: Column(
+        children: [
+          const Text(
+            'Học tập thông minh cùng\nSmartEdu Hub',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 48,
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
+              height: 1.1,
+              letterSpacing: -1,
+            ),
+          ),
+          const SizedBox(height: 24),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 800),
+            child: const Text(
+              'Hệ sinh thái đặt không gian học tập, số hóa tài liệu AI và luyện nghe TOEIC Podcast dành riêng cho sinh viên Cloud-Native.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 20,
+                color: Colors.white,
+                height: 1.5,
+              ),
+            ),
+          ),
+          const SizedBox(height: 40),
+          Wrap(
+            spacing: 16,
+            runSpacing: 16,
+            alignment: WrapAlignment.center,
+            children: [
+              ElevatedButton(
+                onPressed: () => Navigator.pushNamed(context, '/booking'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFFF9800), // Cam nhấn (Màu 4)
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 22),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(50)),
+                  elevation: 8,
+                  shadowColor: Colors.orange.withOpacity(0.4),
+                ),
+                child: const Text(
+                  'Bắt đầu Đặt chỗ',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ),
+              OutlinedButton(
+                onPressed: () {},
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  side: const BorderSide(color: Colors.white, width: 2),
+                  padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 22),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(50)),
+                ),
+                child: const Text(
+                  'Tìm hiểu về OCR AI',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _navButton(BuildContext context, String title, String route) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8.0),
       child: TextButton(
-        onPressed: () {
-          // Lệnh chuyển trang sau khi có file thật
-          // Navigator.pushNamed(context, route);
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('Đang trỏ tới $title')));
-        },
+        onPressed: () => Navigator.pushNamed(context, route),
         child: Text(
           title,
           style: const TextStyle(
@@ -214,59 +279,52 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // Widget: Khối Card giao diện ở giữa màn hình
-  Widget _buildMenuCard(
-    BuildContext context,
-    String title,
-    IconData icon,
-    Color color,
-    String route,
-  ) {
+  Widget _buildMenuCard(BuildContext context, String title, String subtitle, IconData icon, Color color, String route) {
     return InkWell(
-      onTap: () {
-        // Lệnh chuyển trang
-        // Navigator.pushNamed(context, route);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Đang mở $title')));
-      },
-      hoverColor: color.withValues(
-        alpha: 0.05,
-      ), // Hiệu ứng sáng lên khi lướt chuột qua
+      onTap: () => Navigator.pushNamed(context, route),
       borderRadius: BorderRadius.circular(24),
       child: Container(
+        padding: const EdgeInsets.all(28),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
-              color: color.withValues(alpha: 0.15),
-              spreadRadius: 2,
-              blurRadius: 15,
-              offset: const Offset(0, 8),
+              color: Colors.black.withOpacity(0.04),
+              spreadRadius: 0,
+              blurRadius: 20,
+              offset: const Offset(0, 10),
             ),
           ],
         ),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.1),
+                color: color.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
-              child: Icon(icon, size: 48, color: color),
+              child: Icon(icon, size: 36, color: color),
             ),
-            const SizedBox(height: 20),
+            const Spacer(),
             Text(
               title,
               style: const TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w700,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
                 color: Colors.black87,
               ),
-              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              subtitle,
+              style: const TextStyle(
+                fontSize: 15,
+                color: Colors.black54,
+                height: 1.4,
+              ),
             ),
           ],
         ),
@@ -274,7 +332,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // Widget: User Avatar with Dropdown Menu
   Widget _buildUserAvatar(BuildContext context, User user) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12.0),
@@ -282,57 +339,36 @@ class _HomeScreenState extends State<HomeScreen> {
         onSelected: (value) async {
           if (value == 'logout') {
             await _googleSignInService.signOut();
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Đã đăng xuất')),
-              );
-            }
-          } else if (value == 'profile') {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Mở trang hồ sơ')),
-            );
           }
         },
-        itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-          PopupMenuItem<String>(
+        itemBuilder: (BuildContext context) => [
+          PopupMenuItem(
             value: 'profile',
             child: Row(
               children: [
-                const Icon(Icons.person, color: Color(0xFF1E88E5)),
-                const SizedBox(width: 12),
+                const Icon(Icons.person_outline, size: 20),
+                const SizedBox(width: 8),
                 Text(user.displayName ?? 'Hồ sơ'),
               ],
             ),
           ),
           const PopupMenuDivider(),
-          PopupMenuItem<String>(
+          const PopupMenuItem(
             value: 'logout',
-            child: const Row(
+            child: Row(
               children: [
-                Icon(Icons.logout, color: Colors.red),
-                SizedBox(width: 12),
+                Icon(Icons.logout, size: 20, color: Colors.red),
+                SizedBox(width: 8),
                 Text('Đăng xuất', style: TextStyle(color: Colors.red)),
               ],
             ),
           ),
         ],
         child: CircleAvatar(
-          radius: 20,
-          backgroundColor: Colors.white,
-          backgroundImage: user.photoURL != null
-              ? NetworkImage(user.photoURL!)
-              : null,
-          child: user.photoURL == null
-              ? Text(
-                  (user.displayName ?? user.email ?? 'U')
-                      .substring(0, 1)
-                      .toUpperCase(),
-                  style: const TextStyle(
-                    color: Color(0xFF1E88E5),
-                    fontWeight: FontWeight.bold,
-                  ),
-                )
-              : null,
+          radius: 18,
+          backgroundColor: Colors.white24,
+          backgroundImage: user.photoURL != null ? NetworkImage(user.photoURL!) : null,
+          child: user.photoURL == null ? const Icon(Icons.person, color: Colors.white) : null,
         ),
       ),
     );
