@@ -170,17 +170,6 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ),
-      // 1. NGUYÊN TẮC UX/UI CHUNG - Widget Zoho SalesIQ (Nút Chatbot lơ lửng)
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Đang khởi động Trợ lý ảo Zoho SalesIQ...')),
-          );
-        },
-        backgroundColor: const Color(0xFF1565C0),
-        tooltip: 'Hỗ trợ sinh viên',
-        child: const Icon(Icons.chat_bubble_outline, color: Colors.white),
-      ),
     );
   }
 

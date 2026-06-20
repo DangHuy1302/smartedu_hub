@@ -86,16 +86,7 @@ class _BookingScreenState extends State<BookingScreen> {
             ),
           ),
           
-          // Sticky Chatbot (Global Rule)
-          Positioned(
-            bottom: 24,
-            right: 24,
-            child: FloatingActionButton(
-              onPressed: () {},
-              backgroundColor: const Color(0xFF1565C0),
-              child: const Icon(Icons.chat_bubble_outline, color: Colors.white),
-            ),
-          ),
+
         ],
       ),
     );
