@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:smartedu_hub/services/pomodoro_service.dart';
 
 class PomodoroScreen extends StatefulWidget {
   const PomodoroScreen({super.key});
@@ -13,10 +15,15 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
   int _secondsRemaining = 25 * 60;
   Timer? _timer;
   bool _isRunning = false;
+  int _initialMinutes = 25;
+  final PomodoroService _pomodoroService = PomodoroService();
 
   void _startTimer() {
     if (_timer != null) return;
     setState(() => _isRunning = true);
+    // mark user as active
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) _pomodoroService.startPomodoro(uid: uid);
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       setState(() {
         if (_secondsRemaining > 0) {
@@ -32,6 +39,15 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
     _timer?.cancel();
     _timer = null;
     setState(() => _isRunning = false);
+    // mark user as inactive and save session
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      _pomodoroService.endPomodoro(
+        uid: uid,
+        initialSeconds: _initialMinutes * 60,
+        secondsRemaining: _secondsRemaining,
+      );
+    }
   }
 
   String _formatTime(int seconds) {
@@ -113,7 +129,13 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
                       ),
                       const SizedBox(width: 16),
                       OutlinedButton(
-                        onPressed: () => setState(() => _secondsRemaining = 25 * 60),
+                        onPressed: () => setState(() {
+                          _initialMinutes = 25;
+                          _secondsRemaining = _initialMinutes * 60;
+                          // cancel active flag
+                          final uid = FirebaseAuth.instance.currentUser?.uid;
+                          if (uid != null) _pomodoroService.cancelPomodoro(uid: uid);
+                        }),
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 20),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -125,10 +147,19 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
                   
                   const SizedBox(height: 80),
                   ElevatedButton(
-                    onPressed: () {
+                    onPressed: () async {
+                      // End session and award points
+                      final uid = FirebaseAuth.instance.currentUser?.uid;
+                      if (uid != null) {
+                        await _pomodoroService.endPomodoro(
+                          uid: uid,
+                          initialSeconds: _initialMinutes * 60,
+                          secondsRemaining: _secondsRemaining,
+                        );
+                      }
                       Navigator.pop(context);
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Đã rời phòng. +10 Study Points!'))
+                        const SnackBar(content: Text('Đã rời phòng. Điểm đã được cộng.'))
                       );
                     },
                     style: ElevatedButton.styleFrom(
@@ -144,6 +175,7 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
           ),
           
           // PHẢI: Bảng Trạng thái Bạn học (Real-time Member List)
+          // Gọi dữ liệu từ firestore để hiện thị danh sách bạn học và trang thái sử dụng realtime 
           if (isDesktop)
             Container(
               width: 300,
@@ -162,13 +194,23 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
                   ),
                   const Divider(height: 1),
                   Expanded(
-                    child: ListView(
-                      children: [
-                        _memberTile('Trần Văn Huy', 'Đang tập trung', Colors.green),
-                        _memberTile('Nguyễn Thị Nguyên', 'Đang nghỉ giải lao', Colors.orange),
-                        _memberTile('Lê Minh Tâm', 'Đang tập trung', Colors.green),
-                        _memberTile('Hoàng Gia Bảo', 'Vừa rời đi', Colors.grey),
-                      ],
+                    child: StreamBuilder<List<Map<String, dynamic>>>(
+                      stream: _pomodoroService.activeMembersStream(),
+                      builder: (context, snapshot) {
+                        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+                        final members = snapshot.data!;
+                        if (members.isEmpty) return const Center(child: Text('Không có bạn học nào đang trực tuyến'));
+                        return ListView.separated(
+                          itemCount: members.length,
+                          separatorBuilder: (_, __) => const Divider(height: 1),
+                          itemBuilder: (ctx, i) {
+                            final m = members[i];
+                            final name = (m['fullName'] ?? m['email'] ?? 'Người dùng') as String;
+                            final status = (m['status'] ?? '') as String;
+                            return _memberTile(name, status.isNotEmpty ? status : 'Đang tập trung', Colors.green);
+                          },
+                        );
+                      },
                     ),
                   ),
                 ],

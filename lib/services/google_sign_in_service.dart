@@ -1,6 +1,8 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'user_service.dart';
+import '../models/user.dart';
 
 class GoogleSignInService {
   static final GoogleSignInService _instance = GoogleSignInService._internal();
@@ -40,6 +42,23 @@ class GoogleSignInService {
       // Sign in to Firebase with the Google credential
       final userCredential =
           await _firebaseAuth.signInWithCredential(credential);
+
+      // Ensure Firestore user document exists / is synced
+      final user = userCredential.user;
+      if (user != null) {
+        final userModel = UserModel(
+          uid: user.uid,
+          email: user.email ?? '',
+          fullName: user.displayName ?? '',
+          studyPoints: 0,
+          totalBookings: 0,
+          status: 'offline',
+          isPomodoroActive: false,
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+        );
+        await UserService().saveUser(userModel);
+      }
 
       return userCredential;
     } catch (e) {

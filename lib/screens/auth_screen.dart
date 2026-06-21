@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:smartedu_hub/services/google_sign_in_service.dart';
+import 'package:smartedu_hub/services/auth_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -18,6 +20,7 @@ class _AuthScreenState extends State<AuthScreen> {
 
   // Services
   final _googleSignInService = GoogleSignInService();
+  final _authService = AuthService();
 
   // Controllers
   final _emailController = TextEditingController();
@@ -39,16 +42,75 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   Future<void> _handleSubmit() async {
-    if (_formKey.currentState!.validate()) {
-      setState(() => _isLoading = true);
-      
-      // Simulate API call
-      await Future.delayed(const Duration(seconds: 2));
-      
-      if (mounted) {
-        setState(() => _isLoading = false);
-        Navigator.pushReplacementNamed(context, '/');
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      if (_isLogin) {
+        // Login
+        final credential = await _authService.loginWithEmail(
+          email: _emailController.text.trim(),
+          password: _passwordController.text,
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Đăng nhập thành công'), backgroundColor: Colors.green),
+          );
+          Navigator.pushReplacementNamed(context, '/');
+        }
+      } else {
+        // Register
+        final fullName = _nameController.text.trim();
+        final credential = await _authService.registerWithEmail(
+          email: _emailController.text.trim(),
+          password: _passwordController.text,
+          fullName: fullName,
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Đăng ký thành công'), backgroundColor: Colors.green),
+          );
+          Navigator.pushReplacementNamed(context, '/');
+        }
       }
+    } on FirebaseAuthException catch (e) {
+      String msg = 'Lỗi xác thực';
+      switch (e.code) {
+        case 'user-not-found':
+          msg = 'Email không tồn tại.';
+          break;
+        case 'wrong-password':
+          msg = 'Mật khẩu không đúng.';
+          break;
+        case 'email-already-in-use':
+          msg = 'Email đã được sử dụng.';
+          break;
+        case 'weak-password':
+          msg = 'Mật khẩu quá yếu.';
+          break;
+        case 'invalid-email':
+          msg = 'Email không hợp lệ.';
+          break;
+        default:
+          msg = e.message ?? msg;
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg), backgroundColor: Colors.red),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -185,7 +247,7 @@ class _AuthScreenState extends State<AuthScreen> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           if (!_isLogin) ...[
-                            TextField(
+                            TextFormField(
                               controller: _nameController,
                               decoration: InputDecoration(
                                 labelText: 'Họ và tên',
@@ -198,10 +260,14 @@ class _AuthScreenState extends State<AuthScreen> {
                                   borderSide: const BorderSide(color: _primaryBlue, width: 2),
                                 ),
                               ),
+                              validator: (v) {
+                                if (v == null || v.trim().isEmpty) return 'Vui lòng nhập họ và tên';
+                                return null;
+                              },
                             ),
                             const SizedBox(height: 24),
                           ],
-                          TextField(
+                          TextFormField(
                             controller: _emailController,
                             keyboardType: TextInputType.emailAddress,
                             decoration: InputDecoration(
@@ -215,9 +281,15 @@ class _AuthScreenState extends State<AuthScreen> {
                                 borderSide: const BorderSide(color: _primaryBlue, width: 2),
                               ),
                             ),
+                            validator: (v) {
+                              if (v == null || v.trim().isEmpty) return 'Vui lòng nhập email';
+                              final emailRegex = RegExp(r"^[^@\s]+@[^@\s]+\.[^@\s]+");
+                              if (!emailRegex.hasMatch(v.trim())) return 'Email không hợp lệ';
+                              return null;
+                            },
                           ),
                           const SizedBox(height: 24),
-                          TextField(
+                          TextFormField(
                             controller: _passwordController,
                             obscureText: _obscurePassword,
                             decoration: InputDecoration(
@@ -240,6 +312,11 @@ class _AuthScreenState extends State<AuthScreen> {
                                 borderSide: const BorderSide(color: _primaryBlue, width: 2),
                               ),
                             ),
+                            validator: (v) {
+                              if (v == null || v.isEmpty) return 'Vui lòng nhập mật khẩu';
+                              if (v.length < 6) return 'Mật khẩu tối thiểu 6 ký tự';
+                              return null;
+                            },
                           ),
                           const SizedBox(height: 16),
                           

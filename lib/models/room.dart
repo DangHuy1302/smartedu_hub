@@ -1,48 +1,95 @@
-class Room {
-  final String id;
+
+import 'package:equatable/equatable.dart';
+
+class RoomModel extends Equatable {
+  final String roomId;
   final String name;
-  final double lat;
-  final double lng;
+  final String type;
+  final String address;
   final int totalSeats;
   final int availableSeats;
-  final String? description;
-  final DateTime createdAt;
+  final String description;
+  final String? imageUrl;
+  final double latitude;
+  final double longitude;
+  final bool isActive;
 
-  Room({
-    required this.id,
+  const RoomModel({
+    required this.roomId,
     required this.name,
-    required this.lat,
-    required this.lng,
+    required this.type,
+    required this.address,
     required this.totalSeats,
     required this.availableSeats,
-    this.description,
-    DateTime? createdAt,
-  }) : createdAt = createdAt ?? DateTime.now();
+    required this.description,
+    this.imageUrl,
+    required this.latitude,
+    required this.longitude,
+    this.isActive = true,
+  });
 
-  factory Room.fromMap(Map<String, dynamic> m, String id) {
-    return Room(
-      id: id,
-      name: m['name'] as String? ?? 'Unknown',
-      lat: (m['lat'] as num?)?.toDouble() ?? 0.0,
-      lng: (m['lng'] as num?)?.toDouble() ?? 0.0,
-      totalSeats: (m['totalSeats'] as int?) ?? 0,
-      availableSeats: (m['availableSeats'] as int?) ?? 0,
-      description: m['description'] as String?,
-      createdAt: m['createdAt'] != null
-          ? DateTime.tryParse(m['createdAt'] as String) ?? DateTime.now()
-          : DateTime.now(),
+  RoomModel copyWith({
+    String? roomId,
+    String? name,
+    String? type,
+    String? address,
+    int? totalSeats,
+    int? availableSeats,
+    String? description,
+    String? imageUrl,
+    double? latitude,
+    double? longitude,
+    bool? isActive,
+  }) {
+    return RoomModel(
+      roomId: roomId ?? this.roomId,
+      name: name ?? this.name,
+      type: type ?? this.type,
+      address: address ?? this.address,
+      totalSeats: totalSeats ?? this.totalSeats,
+      availableSeats: availableSeats ?? this.availableSeats,
+      description: description ?? this.description,
+      imageUrl: imageUrl ?? this.imageUrl,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      isActive: isActive ?? this.isActive,
     );
   }
 
-  Map<String, dynamic> toMap() {
+  factory RoomModel.fromJson(Map<String, dynamic> json, String documentId) {
+    return RoomModel(
+      roomId: documentId,
+      name: json['name'] as String? ?? '',
+      type: json['type'] as String? ?? '',
+      address: json['address'] as String? ?? '',
+      totalSeats: json['totalSeats'] as int? ?? 0,
+      availableSeats: json['availableSeats'] as int? ?? 0,
+      description: json['description'] as String? ?? '',
+      imageUrl: json['imageUrl'] as String?,
+      latitude: (json['latitude'] as num?)?.toDouble() ?? 0.0,
+      longitude: (json['longitude'] as num?)?.toDouble() ?? 0.0,
+      isActive: json['isActive'] as bool? ?? true,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
     return {
       'name': name,
-      'lat': lat,
-      'lng': lng,
+      'type': type,
+      'address': address,
       'totalSeats': totalSeats,
       'availableSeats': availableSeats,
       'description': description,
-      'createdAt': createdAt.toIso8601String(),
+      'imageUrl': imageUrl,
+      'latitude': latitude,
+      'longitude': longitude,
+      'isActive': isActive,
     };
   }
+
+  @override
+  List<Object?> get props => [
+        roomId, name, type, address, totalSeats, availableSeats,
+        description, imageUrl, latitude, longitude, isActive
+      ];
 }
