@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../services/rooms_service.dart';
 
 class BookingScreen extends StatefulWidget {
   const BookingScreen({super.key});
@@ -10,19 +12,17 @@ class BookingScreen extends StatefulWidget {
 }
 
 class _BookingScreenState extends State<BookingScreen> {
-  // Mock data for locations
-  final List<Map<String, dynamic>> _locations = [
-    {'name': 'Thư viện Tầng 1 - Nhà T35', 'seats': 12, 'total': 50, 'lat': 21.007, 'lng': 105.824},
-    {'name': 'The Coffee House (Chùa Bộc)', 'seats': 5, 'total': 20, 'lat': 21.008, 'lng': 105.826},
-    {'name': 'Không gian tự học - Nhà C1', 'seats': 0, 'total': 15, 'lat': 21.006, 'lng': 105.823},
-  ];
+  final RoomsService _roomsService = RoomsService();
+
+  // initial center (fallback)
+  final LatLng _initialCenter = LatLng(21.007, 105.824);
 
   void _showBookingDetails(Map<String, dynamic> location) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => _BookingBottomSheet(location: location),
+      builder: (context) => _BookingBottomSheet(location: location, roomsService: _roomsService),
     );
   }
 
@@ -42,62 +42,73 @@ class _BookingScreenState extends State<BookingScreen> {
       ),
       body: Stack(
         children: [
-          FlutterMap(
-            options: MapOptions(
-              center: LatLng(_locations.first['lat'], _locations.first['lng']),
-              zoom: 17.5,
-              minZoom: 13.0,
-              maxZoom: 20.0,
-              // Approximate bounds for Đại học Thủy Lợi campus. Adjust if you have more accurate coords.
-              maxBounds: LatLngBounds(
-                LatLng(21.003, 105.820), // southwest
-                LatLng(21.012, 105.830), // northeast
-              ),
-              onTap: (tapPos, latlng) {
-                // Close any open bottom sheet when tapping the map
-                if (Navigator.canPop(context)) Navigator.pop(context);
-              },
-            ),
-            children: [
-              TileLayer(
-                urlTemplate: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                subdomains: const ['a', 'b', 'c'],
-                userAgentPackageName: 'com.example.smartedu_hub',
-              ),
-              MarkerLayer(
-                markers: _locations.map((loc) {
-                  final lat = loc['lat'] as double;
-                  final lng = loc['lng'] as double;
-                  return Marker(
-                    width: 80,
-                    height: 80,
-                    point: LatLng(lat, lng),
-                    builder: (ctx) => GestureDetector(
-                      onTap: () => _showBookingDetails(loc),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.location_on,
-                            size: 44,
-                            color: loc['seats'] > 0 ? Colors.red : Colors.grey,
+          StreamBuilder<List<Map<String, dynamic>>>(
+            stream: _roomsService.streamRooms(),
+            builder: (context, snap) {
+              final rooms = snap.data ?? [];
+              final center = rooms.isNotEmpty
+                  ? LatLng(rooms.first['latitude'] as double, rooms.first['longitude'] as double)
+                  : _initialCenter;
+
+              return FlutterMap(
+                options: MapOptions(
+                  center: center,
+                  zoom: 17.5,
+                  minZoom: 13.0,
+                  maxZoom: 20.0,
+                  // Approximate bounds for Đại học Thủy Lợi campus. Adjust if you have more accurate coords.
+                  maxBounds: LatLngBounds(
+                    LatLng(21.003, 105.820), // southwest
+                    LatLng(21.012, 105.830), // northeast
+                  ),
+                  onTap: (tapPos, latlng) {
+                    // Close any open bottom sheet when tapping the map
+                    if (Navigator.canPop(context)) Navigator.pop(context);
+                  },
+                ),
+                children: [
+                  TileLayer(
+                    urlTemplate: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    subdomains: const ['a', 'b', 'c'],
+                    userAgentPackageName: 'com.example.smartedu_hub',
+                  ),
+                  MarkerLayer(
+                    markers: rooms.map((loc) {
+                      final lat = (loc['latitude'] ?? loc['lat']) as double;
+                      final lng = (loc['longitude'] ?? loc['lng']) as double;
+                      final seats = (loc['availableSeats'] ?? loc['seats'] ?? 0) as int;
+                      return Marker(
+                        width: 80,
+                        height: 80,
+                        point: LatLng(lat, lng),
+                        builder: (ctx) => GestureDetector(
+                          onTap: () => _showBookingDetails(loc),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.location_on,
+                                size: 44,
+                                color: seats > 0 ? Colors.red : Colors.grey,
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(8),
+                                  boxShadow: const [BoxShadow(blurRadius: 4, color: Colors.black26)],
+                                ),
+                                child: Text(loc['name'] ?? '', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                              )
+                            ],
                           ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(8),
-                              boxShadow: const [BoxShadow(blurRadius: 4, color: Colors.black26)],
-                            ),
-                            child: Text(loc['name'], style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                          )
-                        ],
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-            ],
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ],
+              );
+            },
           ),
           
 
@@ -109,7 +120,8 @@ class _BookingScreenState extends State<BookingScreen> {
 
 class _BookingBottomSheet extends StatefulWidget {
   final Map<String, dynamic> location;
-  const _BookingBottomSheet({required this.location});
+  final RoomsService roomsService;
+  const _BookingBottomSheet({required this.location, required this.roomsService});
 
   @override
   State<_BookingBottomSheet> createState() => _BookingBottomSheetState();
@@ -148,11 +160,11 @@ class _BookingBottomSheetState extends State<_BookingBottomSheet> {
               const Icon(Icons.info_outline, size: 18, color: Colors.blue),
               const SizedBox(width: 8),
               Text(
-                'Trạng thái: Còn ${widget.location['seats']} / ${widget.location['total']} chỗ trống',
+                'Trạng thái: Còn ${widget.location['availableSeats'] ?? widget.location['seats']} / ${widget.location['total']} chỗ trống',
                 style: TextStyle(
                   fontSize: 16, 
                   fontWeight: FontWeight.w600,
-                  color: widget.location['seats'] > 0 ? Colors.green : Colors.red,
+                  color: (widget.location['availableSeats'] ?? widget.location['seats']) > 0 ? Colors.green : Colors.red,
                 ),
               ),
             ],
@@ -176,14 +188,36 @@ class _BookingBottomSheetState extends State<_BookingBottomSheet> {
               }),
               const Spacer(),
               ElevatedButton(
-                onPressed: widget.location['seats'] > 0 ? () {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('🎉 Đặt chỗ thành công! Email xác nhận đã được gửi.'),
-                      backgroundColor: Colors.green,
-                    )
-                  );
+                onPressed: (widget.location['availableSeats'] ?? widget.location['seats']) > 0 ? () async {
+                  final user = FirebaseAuth.instance.currentUser;
+                  if (user == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vui lòng đăng nhập trước khi đặt chỗ')));
+                    return;
+                  }
+
+                  final seatCount = _seatCount;
+                  final roomId = widget.location['id'] ?? widget.location['roomId'];
+                  if (roomId == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Lỗi phòng không xác định')));
+                    return;
+                  }
+
+                  try {
+                    await widget.roomsService.bookRoom(
+                      userId: user.uid,
+                      roomId: roomId,
+                      seatCount: seatCount,
+                      bookingDate: DateTime.now(),
+                      startTime: 'Now',
+                      endTime: 'Later',
+                    );
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('🎉 Đặt chỗ thành công! Email xác nhận đã được gửi.'), backgroundColor: Colors.green)
+                    );
+                  } catch (e) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Đặt chỗ thất bại: ${e.toString()}')));
+                  }
                 } : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFFF9800), // Cam nhấn (Màu 4)
