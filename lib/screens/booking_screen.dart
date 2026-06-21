@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 
 class BookingScreen extends StatefulWidget {
   const BookingScreen({super.key});
@@ -40,33 +42,45 @@ class _BookingScreenState extends State<BookingScreen> {
       ),
       body: Stack(
         children: [
-          // 2.3. Bản đồ Tràn viền (Placeholder for Google Maps)
-          Container(
-            width: double.infinity,
-            height: double.infinity,
-            color: const Color(0xFFE3F2FD),
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.map_rounded, size: 100, color: Colors.blueAccent),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Google Maps SDK - Khu vực ĐH Thủy Lợi',
-                    style: TextStyle(color: Colors.blueGrey, fontSize: 18, fontWeight: FontWeight.w500),
-                  ),
-                  const SizedBox(height: 24),
-                  // Mock Markers
-                  Wrap(
-                    spacing: 20,
-                    children: _locations.map((loc) => InkWell(
+          FlutterMap(
+            options: MapOptions(
+              center: LatLng(_locations.first['lat'], _locations.first['lng']),
+              zoom: 17.5,
+              minZoom: 13.0,
+              maxZoom: 20.0,
+              // Approximate bounds for Đại học Thủy Lợi campus. Adjust if you have more accurate coords.
+              maxBounds: LatLngBounds(
+                LatLng(21.003, 105.820), // southwest
+                LatLng(21.012, 105.830), // northeast
+              ),
+              onTap: (tapPos, latlng) {
+                // Close any open bottom sheet when tapping the map
+                if (Navigator.canPop(context)) Navigator.pop(context);
+              },
+            ),
+            children: [
+              TileLayer(
+                urlTemplate: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                subdomains: const ['a', 'b', 'c'],
+                userAgentPackageName: 'com.example.smartedu_hub',
+              ),
+              MarkerLayer(
+                markers: _locations.map((loc) {
+                  final lat = loc['lat'] as double;
+                  final lng = loc['lng'] as double;
+                  return Marker(
+                    width: 80,
+                    height: 80,
+                    point: LatLng(lat, lng),
+                    builder: (ctx) => GestureDetector(
                       onTap: () => _showBookingDetails(loc),
                       child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(
-                            Icons.location_on, 
-                            size: 48, 
-                            color: loc['seats'] > 0 ? Colors.red : Colors.grey
+                            Icons.location_on,
+                            size: 44,
+                            color: loc['seats'] > 0 ? Colors.red : Colors.grey,
                           ),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -79,11 +93,11 @@ class _BookingScreenState extends State<BookingScreen> {
                           )
                         ],
                       ),
-                    )).toList(),
-                  ),
-                ],
+                    ),
+                  );
+                }).toList(),
               ),
-            ),
+            ],
           ),
           
 
