@@ -1,1 +1,36 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"smartedu-hub-b5459","appId":"1:681946323599:android:ad6250d6307ea7c7e66efa","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"smartedu-hub-b5459","configurations":{"android":"1:681946323599:android:ad6250d6307ea7c7e66efa","web":"1:681946323599:web:0027f5ffa517accde66efa"}}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "smartedu-hub-b5459",
+          "appId": "1:681946323599:android:ad6250d6307ea7c7e66efa",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "smartedu-hub-b5459",
+          "configurations": {
+            "android": "1:681946323599:android:ad6250d6307ea7c7e66efa",
+            "web": "1:681946323599:web:0027f5ffa517accde66efa"
+          }
+        }
+      }
+    }
+  },
+  "hosting": {
+    "public": "build/web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}
