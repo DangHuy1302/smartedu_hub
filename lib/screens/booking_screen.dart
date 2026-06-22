@@ -56,8 +56,8 @@ class _BookingScreenState extends State<BookingScreen> {
                 // Not logged in: just show rooms
                 return FlutterMap(
                   options: MapOptions(
-                    center: center,
-                    zoom: 17.5,
+                    initialCenter: center,
+                    initialZoom: 17.5,
                     minZoom: 13.0,
                     maxZoom: 20.0,
                     maxBounds: LatLngBounds(LatLng(21.003, 105.820), LatLng(21.012, 105.830)),
@@ -75,7 +75,7 @@ class _BookingScreenState extends State<BookingScreen> {
                         width: 80,
                         height: 80,
                         point: LatLng(lat, lng),
-                        builder: (ctx) => GestureDetector(
+                        child: GestureDetector(
                           onTap: () => _showBookingDetails(loc),
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
@@ -138,7 +138,7 @@ class _BookingScreenState extends State<BookingScreen> {
                           width: 80,
                           height: 80,
                           point: LatLng(lat, lng),
-                          builder: (ctx) => GestureDetector(
+                          child:  GestureDetector(
                             onTap: () => _showBookingDetails(locWithBooking),
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
