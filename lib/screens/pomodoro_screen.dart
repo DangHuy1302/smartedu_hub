@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:smartedu_hub/services/pomodoro_service.dart';
+import 'package:smartedu_hub/services/rooms_service.dart';
 
 enum PomodoroState { focusing, paused, left }
 
@@ -20,9 +21,10 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
   int _initialMinutes = 25;
   PomodoroState _state = PomodoroState.paused;
   final PomodoroService _pomodoroService = PomodoroService();
+  final RoomsService _roomsService = RoomsService();
   
-  // Để đồng bộ định kỳ lên Firestore (ví dụ mỗi 30s)
-  int _lastSyncSeconds = 0;
+  String? _currentRoomId;
+  String? _currentRoomName;
 
   @override
   void initState() {
@@ -35,6 +37,24 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
     if (uid == null) return;
     
     try {
+      // 1. Xác định phòng dựa trên đặt chỗ của người dùng
+      final booking = await _roomsService.getActiveBookingForUser(uid);
+      if (booking != null) {
+        setState(() {
+          _currentRoomId = booking['roomId'];
+        });
+        
+        if (_currentRoomId != null) {
+          final roomDoc = await FirebaseFirestore.instance.collection('rooms').doc(_currentRoomId!).get();
+          if (roomDoc.exists) {
+            setState(() {
+              _currentRoomName = roomDoc.data()?['name'];
+            });
+          }
+        }
+      }
+
+      // 2. Lấy trạng thái Pomodoro hiện tại
       final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
       if (!doc.exists) return;
       
@@ -47,7 +67,7 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
           _secondsRemaining = remaining;
           if (status == 'focusing') {
             _state = PomodoroState.focusing;
-            _toggleTimer(true); // Tự động chạy tiếp nếu đang học dở
+            _toggleTimer(true); 
           } else if (status == 'paused') {
             _state = PomodoroState.paused;
           } else {
@@ -73,7 +93,8 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
         if (_state == PomodoroState.focusing) {
            _pomodoroService.resumePomodoro(uid: uid);
         } else {
-           _pomodoroService.startPomodoro(uid: uid);
+           // Truyền roomId vào để lọc thành viên cùng phòng
+           _pomodoroService.startPomodoro(uid: uid, roomId: _currentRoomId);
         }
       }
 
@@ -88,7 +109,6 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
             _secondsRemaining--;
           });
           
-          // Đồng bộ mỗi 30 giây
           if ((_initialMinutes * 60 - _secondsRemaining) % 30 == 0) {
             _syncProgress();
           }
@@ -151,15 +171,25 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
   Future<void> _endSession() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid != null) {
+      try {
+        final booking = await _roomsService.getActiveBookingForUser(uid);
+        if (booking != null && booking['id'] != null) {
+          await _roomsService.cancelBooking(bookingId: booking['id']);
+        }
+      } catch (e) {
+        debugPrint('Lỗi khi hoàn tác ghế: $e');
+      }
+
       await _pomodoroService.endPomodoro(
         uid: uid,
         initialSeconds: _initialMinutes * 60,
         secondsRemaining: _secondsRemaining,
       );
+      
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Đã lưu kết quả học tập!'))
+          const SnackBar(content: Text('Đã lưu kết quả học tập và giải phóng chỗ ngồi!'))
         );
       }
     }
@@ -185,14 +215,16 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
       appBar: AppBar(
-        title: const Text('Phòng học Pomodoro', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(
+          _currentRoomName != null ? 'Phòng học: $_currentRoomName' : 'Phòng học Pomodoro',
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
         backgroundColor: Colors.white,
         foregroundColor: const Color(0xFF1565C0),
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () async {
-             // Hỏi người dùng trước khi thoát nếu đang học
              if (_isRunning) {
                final leave = await showDialog<bool>(
                  context: context,
@@ -247,23 +279,12 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
   }
 
   Widget _buildStatusHeader() {
-    String statusText = 'Sẵn sàng học tập';
-    Color statusColor = Colors.grey;
-    
-    if (_state == PomodoroState.focusing) {
-      statusText = 'Đang tập trung học tập';
-      statusColor = Colors.green;
-    } else if (_state == PomodoroState.paused) {
-      statusText = 'Đã tạm dừng';
-      statusColor = Colors.orange;
-    }
+    String statusText = _state == PomodoroState.focusing ? 'Đang tập trung học tập' : 'Đã tạm dừng';
+    Color statusColor = _state == PomodoroState.focusing ? Colors.green : Colors.orange;
 
     return Column(
       children: [
-        Text(
-          statusText,
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: statusColor),
-        ),
+        Text(statusText, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: statusColor)),
         if (_isRunning)
            const Padding(
              padding: EdgeInsets.only(top: 8),
@@ -375,17 +396,16 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
         children: [
           const Padding(
             padding: EdgeInsets.all(24),
-            child: Text('Bạn học trực tuyến', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            child: Text('Bạn học cùng phòng', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           ),
           const Divider(height: 1),
           Expanded(
             child: StreamBuilder<List<Map<String, dynamic>>>(
-              stream: _pomodoroService.activeMembersStream(),
+              stream: _pomodoroService.activeMembersStream(_currentRoomId),
               builder: (context, snapshot) {
                 if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
                 final members = snapshot.data!;
-                // Lọc bỏ user hiện tại nếu muốn (ở đây hiển thị tất cả)
-                if (members.isEmpty) return const Center(child: Text('Không có ai trực tuyến'));
+                if (members.isEmpty) return const Center(child: Text('Không có ai khác trong phòng', style: TextStyle(color: Colors.grey)));
                 return ListView.separated(
                   itemCount: members.length,
                   separatorBuilder: (_, __) => const Divider(height: 1),
@@ -394,15 +414,8 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
                     final String name = m['fullName'] ?? m['email']?.split('@')[0] ?? 'Bạn học';
                     final String status = m['status'] ?? 'focusing';
                     
-                    Color statusColor = Colors.green;
-                    String statusLabel = 'Đang học';
-                    if (status == 'paused') {
-                      statusColor = Colors.orange;
-                      statusLabel = 'Tạm nghỉ';
-                    } else if (status == 'left') {
-                      statusColor = Colors.grey;
-                      statusLabel = 'Vừa rời đi';
-                    }
+                    Color statusColor = status == 'focusing' ? Colors.green : (status == 'paused' ? Colors.orange : Colors.grey);
+                    String statusLabel = status == 'focusing' ? 'Đang học' : (status == 'paused' ? 'Tạm nghỉ' : 'Vừa rời đi');
 
                     return _memberTile(name, statusLabel, statusColor);
                   },

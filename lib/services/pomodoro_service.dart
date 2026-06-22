@@ -3,17 +3,21 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class PomodoroService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  /// Bắt đầu phiên học mới
-  Future<void> startPomodoro({required String uid}) async {
-    await _firestore.collection('users').doc(uid).set({
+  /// Bắt đầu phiên học mới và gán ID phòng hiện tại
+  Future<void> startPomodoro({required String uid, String? roomId}) async {
+    final data = {
       'isPomodoroActive': true,
       'updatedAt': FieldValue.serverTimestamp(),
       'status': 'focusing',
       'pomodoroStartedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    };
+    if (roomId != null) {
+      data['currentRoomId'] = roomId;
+    }
+    await _firestore.collection('users').doc(uid).set(data, SetOptions(merge: true));
   }
 
-  /// Cập nhật thời gian còn lại định kỳ (đề phòng crash)
+  /// Cập nhật thời gian còn lại định kỳ
   Future<void> syncRemainingTime({required String uid, required int remainingSeconds}) async {
     await _firestore.collection('users').doc(uid).update({
       'pomodoroRemainingSeconds': remainingSeconds,
@@ -21,7 +25,7 @@ class PomodoroService {
     });
   }
 
-  /// Kết thúc phiên học và cộng điểm (1 phút = 1 điểm)
+  /// Kết thúc phiên học và xóa thông tin phòng
   Future<void> endPomodoro({
     required String uid,
     required int initialSeconds,
@@ -53,6 +57,7 @@ class PomodoroService {
       transaction.update(userRef, {
         'isPomodoroActive': false,
         'status': FieldValue.delete(),
+        'currentRoomId': FieldValue.delete(), // Xóa phòng khi kết thúc
         'pomodoroRemainingSeconds': FieldValue.delete(),
         'pomodoroStartedAt': FieldValue.delete(),
         'pomodoroLeftAt': FieldValue.delete(),
@@ -92,24 +97,28 @@ class PomodoroService {
     await _firestore.collection('users').doc(uid).update({
       'isPomodoroActive': false,
       'status': FieldValue.delete(),
+      'currentRoomId': FieldValue.delete(),
       'pomodoroRemainingSeconds': FieldValue.delete(),
       'updatedAt': FieldValue.serverTimestamp(),
     });
   }
 
-  Stream<List<Map<String, dynamic>>> activeMembersStream() {
+  /// Lấy tất cả thành viên trong cùng một phòng (dựa vào currentRoomId)
+  Stream<List<Map<String, dynamic>>> activeMembersStream(String? roomId) {
+    if (roomId == null) return Stream.value([]);
+    
     return _firestore
         .collection('users')
-        .where('status', whereIn: ['focusing', 'paused', 'left'])
+        .where('currentRoomId', isEqualTo: roomId)
         .snapshots()
         .map((snap) {
           final now = DateTime.now();
           return snap.docs
               .map((d) => {...d.data(), 'uid': d.id})
               .where((member) {
+                // Nếu đang ở trạng thái 'left' quá 30 phút thì ẩn
                 if (member['status'] == 'left') {
                   final leftAt = (member['pomodoroLeftAt'] as Timestamp?)?.toDate();
-                  // Nếu rời phòng quá 30 phút thì ẩn khỏi danh sách
                   if (leftAt != null && now.difference(leftAt).inMinutes >= 30) {
                     return false;
                   }
