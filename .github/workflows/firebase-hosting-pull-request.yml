@@ -7,15 +7,24 @@ permissions:
   checks: write
   contents: read
   pull-requests: write
+# ... (phần code phía trên giữ nguyên) ...
 jobs:
   build_and_preview:
-    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+    if: "${{ github.event.pull_request.head.repo.full_name == github.repository }}"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # 1. BẠN CHÈN THÊM 2 BƯỚC NÀY VÀO ĐÂY ĐỂ DẠY GITHUB CÁCH DÙNG FLUTTER
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+      - run: flutter pub get
+      # 2. Bước build gốc của file (giữ nguyên)
       - run: flutter build web
+      # 3. Bước deploy (giữ nguyên)
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
+          # ... (phần cấu hình khóa bảo mật phía dưới giữ nguyên) ...
           repoToken: ${{ secrets.GITHUB_TOKEN }}
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_SMARTEDU_HUB_B5459 }}
           projectId: smartedu-hub-b5459
