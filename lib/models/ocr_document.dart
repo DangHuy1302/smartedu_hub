@@ -1,83 +1,54 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:equatable/equatable.dart';
 
-class OcrDocumentModel extends Equatable {
-  final String documentId;
-  final String userId;
+class OcrDocument {
+  final String id;
   final String title;
-  final String originalFileUrl;
-  final String extractedText;
-  final String? audioUrl;
-  final String language;
-  final int wordCount;
+  final String englishText;
+  final String vietnameseText;
   final DateTime? createdAt;
+  final String? ownerId;
+  final String? ownerEmail;
+  final String? imageUrl;
+  final String? audioUrl;
 
-  const OcrDocumentModel({
-    required this.documentId,
-    required this.userId,
+  OcrDocument({
+    required this.id,
     required this.title,
-    required this.originalFileUrl,
-    required this.extractedText,
+    required this.englishText,
+    required this.vietnameseText,
+    required this.createdAt,
+    this.ownerId,
+    this.ownerEmail,
+    this.imageUrl,
     this.audioUrl,
-    required this.language,
-    required this.wordCount,
-    this.createdAt,
   });
 
-  OcrDocumentModel copyWith({
-    String? documentId,
-    String? userId,
-    String? title,
-    String? originalFileUrl,
-    String? extractedText,
-    String? audioUrl,
-    String? language,
-    int? wordCount,
-    DateTime? createdAt,
-  }) {
-    return OcrDocumentModel(
-      documentId: documentId ?? this.documentId,
-      userId: userId ?? this.userId,
-      title: title ?? this.title,
-      originalFileUrl: originalFileUrl ?? this.originalFileUrl,
-      extractedText: extractedText ?? this.extractedText,
-      audioUrl: audioUrl ?? this.audioUrl,
-      language: language ?? this.language,
-      wordCount: wordCount ?? this.wordCount,
-      createdAt: createdAt ?? this.createdAt,
-    );
-  }
-
-  factory OcrDocumentModel.fromJson(Map<String, dynamic> json, String documentId) {
-    return OcrDocumentModel(
-      documentId: documentId,
-      userId: json['userId'] as String? ?? '',
-      title: json['title'] as String? ?? '',
-      originalFileUrl: json['originalFileUrl'] as String? ?? '',
-      extractedText: json['extractedText'] as String? ?? '',
-      audioUrl: json['audioUrl'] as String?,
-      language: json['language'] as String? ?? 'vi',
-      wordCount: json['wordCount'] as int? ?? 0,
-      createdAt: (json['createdAt'] as Timestamp?)?.toDate(),
+  factory OcrDocument.fromSnapshot(DocumentSnapshot snapshot) {
+    final data = snapshot.data() as Map<String, dynamic>? ?? {};
+    final timestamp = data['createdAt'];
+    return OcrDocument(
+      id: snapshot.id,
+      title: data['title'] as String? ?? 'Không tên',
+      englishText: data['englishText'] as String? ?? '',
+      vietnameseText: data['vietnameseText'] as String? ?? '',
+      createdAt: timestamp is Timestamp ? timestamp.toDate() : null,
+      ownerId: data['ownerId'] as String?,
+      ownerEmail: data['ownerEmail'] as String?,
+      imageUrl: data['imageUrl'] as String?,
+      audioUrl: data['audioUrl'] as String?,
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
-      'userId': userId,
       'title': title,
-      'originalFileUrl': originalFileUrl,
-      'extractedText': extractedText,
+      'englishText': englishText,
+      'vietnameseText': vietnameseText,
+      'createdAt': FieldValue.serverTimestamp(),
+      'ownerId': ownerId,
+      'ownerEmail': ownerEmail,
+      'imageUrl': imageUrl,
       'audioUrl': audioUrl,
-      'language': language,
-      'wordCount': wordCount,
-      'createdAt': createdAt != null ? Timestamp.fromDate(createdAt!) : FieldValue.serverTimestamp(),
     };
   }
-
-  @override
-  List<Object?> get props => [
-        documentId, userId, title, originalFileUrl, 
-        extractedText, audioUrl, language, wordCount, createdAt
-      ];
 }

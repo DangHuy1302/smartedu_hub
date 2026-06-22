@@ -1,4 +1,8 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import '../services/ocr_document_service.dart';
 
 class OcrScreen extends StatefulWidget {
   const OcrScreen({super.key});
@@ -8,224 +12,225 @@ class OcrScreen extends StatefulWidget {
 }
 
 class _OcrScreenState extends State<OcrScreen> {
+  final OcrDocumentService _service = OcrDocumentService();
+  final TextEditingController _titleController = TextEditingController();
+  XFile? _selectedImage;
+  Uint8List? _imageBytes;
+  String _englishText = '';
+  String _vietnameseText = '';
   bool _isProcessing = false;
-  String _ocrResult = "";
-  String _translatedResult = "";
-  bool _showTranslation = false;
+  String? _errorMessage;
 
-  void _simulateOcr() {
-    setState(() => _isProcessing = true);
-    Future.delayed(const Duration(seconds: 2), () {
-      setState(() {
-        _isProcessing = false;
-        _ocrResult = "SmartEdu Hub is a platform for students of Thuy Loi University. It provides tools for study space booking and document digitalization using AI technologies.";
-      });
+  Future<void> _pickImage() async {
+    setState(() {
+      _errorMessage = null;
+      _englishText = '';
+      _vietnameseText = '';
+      _selectedImage = null;
+      _imageBytes = null;
     });
+
+    final file = await _service.pickDocumentImage();
+    if (file == null) return;
+
+    final bytes = await file.readAsBytes();
+    setState(() {
+      _selectedImage = file;
+      _imageBytes = bytes;
+      _titleController.text = file.name;
+    });
+  }
+
+  Future<void> _processImage() async {
+    if (_selectedImage == null) {
+      setState(() => _errorMessage = 'Vui lòng chọn ảnh trước khi quét.');
+      return;
+    }
+
+    setState(() {
+      _isProcessing = true;
+      _errorMessage = null;
+      _englishText = '';
+      _vietnameseText = '';
+    });
+
+    try {
+      final englishText = await _service.extractTextFromImage(_selectedImage!);
+      final vietnameseText = await _service.translateToVietnamese(englishText);
+
+      setState(() {
+        _englishText = englishText;
+        _vietnameseText = vietnameseText;
+      });
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Lỗi xử lý OCR: ${e.toString()}';
+      });
+    } finally {
+      setState(() => _isProcessing = false);
+    }
+  }
+
+  Future<void> _saveDocument() async {
+    if (_englishText.isEmpty || _vietnameseText.isEmpty) {
+      setState(
+        () => _errorMessage =
+            'Chưa có nội dung để lưu. Vui lòng quét tài liệu trước.',
+      );
+      return;
+    }
+
+    setState(() {
+      _isProcessing = true;
+      _errorMessage = null;
+    });
+
+    try {
+      await _service.saveDocument(
+        title: _titleController.text.isEmpty
+            ? 'Tài liệu OCR'
+            : _titleController.text,
+        englishText: _englishText,
+        vietnameseText: _vietnameseText,
+        imageFile: _selectedImage,
+        audioUrl: null,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Lưu tài liệu vào kho Firestore thành công.'),
+          ),
+        );
+        setState(() {
+          _selectedImage = null;
+          _imageBytes = null;
+          _titleController.clear();
+          _englishText = '';
+          _vietnameseText = '';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Lỗi lưu tài liệu: ${e.toString()}';
+      });
+    } finally {
+      setState(() => _isProcessing = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    double screenWidth = MediaQuery.of(context).size.width;
-    bool isDesktop = screenWidth > 900;
-
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
-      appBar: AppBar(
-        title: const Text('Máy quét AI (OCR Hub)', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF1565C0),
-        elevation: 0,
-      ),
+      appBar: AppBar(title: const Text('Máy quét OCR')),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1200),
-            child: Flex(
-              direction: isDesktop ? Axis.horizontal : Axis.vertical,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 2.4. Phần Trái/Trên (Upload & Preview)
-                Expanded(
-                  flex: isDesktop ? 1 : 0,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Container(
-                        height: 400,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: Colors.grey[300]!, width: 2),
-                        ),
-                        child: _ocrResult.isEmpty && !_isProcessing
-                            ? Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.cloud_upload_outlined, size: 80, color: Colors.grey[400]),
-                                  const SizedBox(height: 16),
-                                  const Text('Kéo thả hoặc bấm để tải ảnh tài liệu lên', style: TextStyle(color: Colors.grey)),
-                                  const SizedBox(height: 24),
-                                  ElevatedButton(
-                                    onPressed: _simulateOcr,
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: const Color(0xFF1565C0),
-                                      foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                                    ),
-                                    child: const Text('Chọn ảnh từ máy'),
-                                  ),
-                                ],
-                              )
-                            : ClipRRect(
-                                borderRadius: BorderRadius.circular(18),
-                                child: Stack(
-                                  fit: StackFit.expand,
-                                  children: [
-                                    Image.network(
-                                      'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?q=80&w=1000&auto=format&fit=crop',
-                                      fit: BoxFit.cover,
-                                    ),
-                                    if (_isProcessing)
-                                      Container(
-                                        color: Colors.black45,
-                                        child: const Center(
-                                          child: CircularProgressIndicator(color: Colors.white),
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                      ),
-                      const SizedBox(height: 24),
-                      if (_ocrResult.isNotEmpty)
-                        ElevatedButton.icon(
-                          onPressed: _simulateOcr,
-                          icon: const Icon(Icons.refresh),
-                          label: const Text('Quét lại OCR'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF1565C0),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 20),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-                
-                if (isDesktop) const SizedBox(width: 32) else const SizedBox(height: 32),
-
-                // 2.4. Phần Phải/Dưới (AI Text Result)
-                Expanded(
-                  flex: isDesktop ? 1 : 0,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(24),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                const Icon(Icons.auto_awesome, color: Colors.purple, size: 20),
-                                const SizedBox(width: 8),
-                                const Text('Kết quả nhận diện AI', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                                const Spacer(),
-                                if (_ocrResult.isNotEmpty)
-                                  IconButton(
-                                    icon: const Icon(Icons.copy_all, size: 20),
-                                    onPressed: () {},
-                                    tooltip: 'Sao chép',
-                                  ),
-                              ],
-                            ),
-                            const Divider(height: 32),
-                            if (_ocrResult.isEmpty && !_isProcessing)
-                              const Center(
-                                child: Padding(
-                                  padding: EdgeInsets.symmetric(vertical: 60.0),
-                                  child: Text('Chưa có dữ liệu. Vui lòng tải ảnh lên.', style: TextStyle(color: Colors.black38)),
-                                ),
-                              )
-                            else ...[
-                              Text(
-                                _ocrResult,
-                                style: const TextStyle(fontSize: 16, height: 1.6, color: Colors.black87),
-                              ),
-                              if (_showTranslation) ...[
-                                const SizedBox(height: 24),
-                                Container(
-                                  padding: const EdgeInsets.all(16),
-                                  decoration: BoxDecoration(
-                                    color: Colors.blue[50],
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(color: Colors.blue[100]!),
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      const Text('BẢN DỊCH TIẾNG VIỆT:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blue)),
-                                      const SizedBox(height: 8),
-                                      const Text(
-                                        'SmartEdu Hub là một nền tảng dành cho sinh viên Đại học Thủy Lợi. Nó cung cấp các công cụ để đặt chỗ học tập và số hóa tài liệu bằng công nghệ AI.',
-                                        style: TextStyle(fontSize: 16, height: 1.6, fontStyle: FontStyle.italic),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      
-                      // Thanh công cụ xử lý
-                      if (_ocrResult.isNotEmpty)
-                        Row(
-                          children: [
-                            Expanded(
-                              child: OutlinedButton.icon(
-                                onPressed: () => setState(() => _showTranslation = !_showTranslation),
-                                icon: const Icon(Icons.translate),
-                                label: Text(_showTranslation ? 'Ẩn bản dịch' : '🌐 Dịch tự động'),
-                                style: OutlinedButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(vertical: 16),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: ElevatedButton.icon(
-                                onPressed: () {
-                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('💾 Đã lưu vào Kho tài liệu cá nhân!')));
-                                },
-                                icon: const Icon(Icons.save_outlined),
-                                label: const Text('💾 Lưu vào Kho'),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF1565C0),
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(vertical: 16),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                    ],
-                  ),
-                ),
-              ],
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Bước 1: Chọn ảnh đề thi hoặc tài liệu',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
-          ),
+            const SizedBox(height: 12),
+            ElevatedButton.icon(
+              onPressed: _isProcessing ? null : _pickImage,
+              icon: const Icon(Icons.photo_library_outlined),
+              label: const Text('Chọn ảnh từ thư viện'),
+            ),
+            const SizedBox(height: 12),
+            if (_imageBytes != null) ...[
+              Center(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: Image.memory(
+                    _imageBytes!,
+                    height: 220,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+            TextField(
+              controller: _titleController,
+              decoration: const InputDecoration(
+                labelText: 'Tiêu đề tài liệu',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: _isProcessing ? null : _processImage,
+              icon: const Icon(Icons.document_scanner),
+              label: const Text('Bắt đầu OCR & Dịch'),
+            ),
+            const SizedBox(height: 16),
+            if (_isProcessing)
+              const Center(child: CircularProgressIndicator())
+            else if (_errorMessage != null)
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  _errorMessage!,
+                  style: const TextStyle(color: Colors.red),
+                ),
+              ),
+            if (_englishText.isNotEmpty || _vietnameseText.isNotEmpty) ...[
+              const SizedBox(height: 20),
+              const Text(
+                'Bản gốc tiếng Anh',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  _englishText.isEmpty
+                      ? 'Không tìm thấy văn bản.'
+                      : _englishText,
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Bản dịch tiếng Việt',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  _vietnameseText.isEmpty
+                      ? 'Chưa có bản dịch.'
+                      : _vietnameseText,
+                ),
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton.icon(
+                onPressed: _isProcessing ? null : _saveDocument,
+                icon: const Icon(Icons.save_outlined),
+                label: const Text('Lưu vào kho Firestore'),
+              ),
+            ],
+          ],
         ),
       ),
     );

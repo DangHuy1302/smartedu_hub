@@ -1,36 +1,143 @@
+import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../models/ocr_document.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
+import '../services/google_cloud_api_config.dart';
 
 class OcrDocumentService {
+  static final OcrDocumentService _instance = OcrDocumentService._internal();
+  factory OcrDocumentService() => _instance;
+  OcrDocumentService._internal();
+
+  static const String _visionApiBase =
+      'https://vision.googleapis.com/v1/images:annotate';
+  static const String _translateApiBase =
+      'https://translation.googleapis.com/language/translate/v2';
+
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final String _collection = 'ocr_documents';
+  final FirebaseAuth _firebaseAuth = FirebaseAuth.instance;
+  final FirebaseStorage _storage = FirebaseStorage.instance;
+  final ImagePicker _picker = ImagePicker();
 
-  // Lưu document mới sau khi OCR thành công
-  Future<String> saveDocument(OcrDocumentModel document) async {
-    try {
-      final docRef = await _firestore.collection(_collection).add(document.toJson());
-      return docRef.id;
-    } catch (e) {
-      throw Exception('Lỗi lưu tài liệu OCR: $e');
-    }
+  Future<XFile?> pickDocumentImage() async {
+    return await _picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+    );
   }
 
-  // Lắng nghe danh sách tài liệu OCR của user realtime
-  Stream<List<OcrDocumentModel>> streamUserDocuments(String userId) {
+  Future<String> extractTextFromImage(XFile file) async {
+    if (googleCloudApiKey.startsWith('<')) {
+      throw StateError(
+        'Google Cloud API key is not configured. Please update google_cloud_api_config.dart.',
+      );
+    }
+
+    final bytes = await file.readAsBytes();
+    final encoded = base64Encode(bytes);
+    final uri = Uri.parse('$_visionApiBase?key=$googleCloudApiKey');
+    final body = jsonEncode({
+      'requests': [
+        {
+          'image': {'content': encoded},
+          'features': [
+            {'type': 'TEXT_DETECTION', 'maxResults': 1},
+          ],
+        },
+      ],
+    });
+
+    final response = await http.post(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: body,
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Vision API error: ${response.statusCode} ${response.reasonPhrase}',
+      );
+    }
+
+    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+    final firstResponse =
+        (decoded['responses'] as List<dynamic>?)?.first
+            as Map<String, dynamic>?;
+    final detection =
+        firstResponse?['fullTextAnnotation'] as Map<String, dynamic>?;
+    return detection != null ? (detection['text'] as String? ?? '') : '';
+  }
+
+  Future<String> translateToVietnamese(String text) async {
+    if (googleCloudApiKey.startsWith('<')) {
+      throw StateError(
+        'Google Cloud API key is not configured. Please update google_cloud_api_config.dart.',
+      );
+    }
+
+    final uri = Uri.parse('$_translateApiBase?key=$googleCloudApiKey');
+    final body = jsonEncode({
+      'q': [text],
+      'target': 'vi',
+      'format': 'text',
+    });
+
+    final response = await http.post(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: body,
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Translation API error: ${response.statusCode} ${response.reasonPhrase}',
+      );
+    }
+
+    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+    final translations =
+        (decoded['data'] as Map<String, dynamic>?)?['translations']
+            as List<dynamic>?;
+    return translations?.first['translatedText'] as String? ?? '';
+  }
+
+  Future<String?> uploadImageToStorage(XFile file) async {
+    final fileName = '${DateTime.now().millisecondsSinceEpoch}_${file.name}';
+    final ref = _storage.ref().child('ocr_images/$fileName');
+    final bytes = await file.readAsBytes();
+    final snapshot = await ref.putData(bytes);
+    return await snapshot.ref.getDownloadURL();
+  }
+
+  Future<DocumentReference> saveDocument({
+    required String title,
+    required String englishText,
+    required String vietnameseText,
+    XFile? imageFile,
+    String? audioUrl,
+  }) async {
+    final user = _firebaseAuth.currentUser;
+    final imageUrl = imageFile != null
+        ? await uploadImageToStorage(imageFile)
+        : null;
+    return await _firestore.collection('ocr_documents').add({
+      'title': title,
+      'englishText': englishText,
+      'vietnameseText': vietnameseText,
+      'createdAt': FieldValue.serverTimestamp(),
+      'ownerId': user?.uid,
+      'ownerEmail': user?.email,
+      'imageUrl': imageUrl,
+      'audioUrl': audioUrl,
+    });
+  }
+
+  Stream<QuerySnapshot> watchDocuments() {
     return _firestore
-        .collection(_collection)
-        .where('userId', isEqualTo: userId)
+        .collection('ocr_documents')
         .orderBy('createdAt', descending: true)
-        .snapshots()
-        .map((snapshot) => snapshot.docs.map((doc) => OcrDocumentModel.fromJson(doc.data(), doc.id)).toList());
-  }
-
-  // Xóa document
-  Future<void> deleteDocument(String documentId) async {
-    try {
-      await _firestore.collection(_collection).doc(documentId).delete();
-    } catch (e) {
-      throw Exception('Lỗi xóa lịch sử OCR: $e');
-    }
+        .snapshots();
   }
 }
