@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/rooms_service.dart';
+import 'pomodoro_screen.dart';
 
 class BookingScreen extends StatefulWidget {
   const BookingScreen({super.key});
@@ -186,6 +187,8 @@ class _BookingBottomSheetState extends State<_BookingBottomSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final bool isBookedByMe = widget.location['isBookedByMe'] == true;
+
     return Container(
       decoration: const BoxDecoration(
         color: Colors.white,
@@ -224,46 +227,25 @@ class _BookingBottomSheetState extends State<_BookingBottomSheet> {
             ],
           ),
           const Divider(height: 40),
-          const Text('Số lượng ghế muốn đặt (Tối đa 5):', style: TextStyle(fontSize: 16)),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              _counterButton(Icons.remove, () {
-                if (_seatCount > 1) setState(() => _seatCount--);
-              }),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                child: Text('$_seatCount', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-              ),
-              _counterButton(Icons.add, () {
-                final maxAvailable = (widget.location['availableSeats'] ?? widget.location['seats']) as int;
-                if (_seatCount < 5 && _seatCount < maxAvailable) {
-                  setState(() => _seatCount++);
-                }
-              }),
-              const Spacer(),
-              if (widget.location['isBookedByMe'] == true) ...[
-                ElevatedButton(
-                  onPressed: () async {
-                    final bookingId = widget.location['bookingId'];
-                    if (bookingId == null) return;
-                    try {
-                      await widget.roomsService.cancelBooking(bookingId: bookingId);
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã hoàn tác đặt chỗ.'), backgroundColor: Colors.orange));
-                    } catch (e) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Hoàn tác thất bại: ${e.toString()}')));
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  child: const Text('Hoàn tác đặt chỗ', style: TextStyle(fontWeight: FontWeight.bold)),
+          if (!isBookedByMe) ...[
+            const Text('Số lượng ghế muốn đặt (Tối đa 5):', style: TextStyle(fontSize: 16)),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                _counterButton(Icons.remove, () {
+                  if (_seatCount > 1) setState(() => _seatCount--);
+                }),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                  child: Text('$_seatCount', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
                 ),
-              ] else ...[
+                _counterButton(Icons.add, () {
+                  final maxAvailable = (widget.location['availableSeats'] ?? widget.location['seats']) as int;
+                  if (_seatCount < 5 && _seatCount < maxAvailable) {
+                    setState(() => _seatCount++);
+                  }
+                }),
+                const Spacer(),
                 ElevatedButton(
                   onPressed: (widget.location['availableSeats'] ?? widget.location['seats']) > 0 ? () async {
                     final user = FirebaseAuth.instance.currentUser;
@@ -290,14 +272,14 @@ class _BookingBottomSheetState extends State<_BookingBottomSheet> {
                       );
                       Navigator.pop(context);
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('🎉 Đặt chỗ thành công! Email xác nhận đã được gửi.'), backgroundColor: Colors.green)
+                        const SnackBar(content: Text('🎉 Đặt chỗ thành công!'), backgroundColor: Colors.green)
                       );
                     } catch (e) {
                       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Đặt chỗ thất bại: ${e.toString()}')));
                     }
                   } : null,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFFF9800), // Cam nhấn (Màu 4)
+                    backgroundColor: const Color(0xFFFF9800),
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -305,8 +287,52 @@ class _BookingBottomSheetState extends State<_BookingBottomSheet> {
                   child: const Text('Giữ chỗ ngay', style: TextStyle(fontWeight: FontWeight.bold)),
                 ),
               ],
-            ],
-          ),
+            ),
+          ] else ...[
+            const Text('Bạn đã đặt chỗ tại phòng này.', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      Navigator.push(context, MaterialPageRoute(builder: (context) => const PomodoroScreen()));
+                    },
+                    icon: const Icon(Icons.timer),
+                    label: const Text('Vào phòng Pomodoro'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF1565C0),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                ElevatedButton(
+                  onPressed: () async {
+                    final bookingId = widget.location['bookingId'];
+                    if (bookingId == null) return;
+                    try {
+                      await widget.roomsService.cancelBooking(bookingId: bookingId);
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã hoàn tác đặt chỗ.'), backgroundColor: Colors.orange));
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Hoàn tác thất bại: ${e.toString()}')));
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.redAccent,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Text('Hủy'),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 20),
         ],
       ),
