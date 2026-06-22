@@ -20,11 +20,82 @@ class RoomsService {
   }
 
   Future<Map<String, dynamic>?> getActiveBookingForUser(String userId) async {
-    final q = await _db.collection('bookings').where('userId', isEqualTo: userId).where('status', isEqualTo: 'Confirmed').limit(1).get();
+    // Trước khi lấy booking active, hãy kiểm tra và dọn dẹp nếu nó quá hạn
+    await cleanupUserBooking(userId);
+
+    final q = await _db.collection('bookings')
+        .where('userId', isEqualTo: userId)
+        .where('status', isEqualTo: 'Confirmed')
+        .limit(1)
+        .get();
+
     if (q.docs.isEmpty) return null;
     final d = q.docs.first;
     final data = Map<String, dynamic>.from(d.data() as Map);
     return {'id': d.id, ...data};
+  }
+
+  /// Kiểm tra và hủy booking của 1 user cụ thể nếu quá 30p không hoạt động
+  Future<void> cleanupUserBooking(String userId) async {
+    final now = DateTime.now();
+    final bookings = await _db.collection('bookings')
+        .where('userId', isEqualTo: userId)
+        .where('status', isEqualTo: 'Confirmed')
+        .get();
+
+    if (bookings.docs.isEmpty) return;
+
+    final userDoc = await _db.collection('users').doc(userId).get();
+    final userData = userDoc.data();
+    final status = userData?['status'];
+    final lastUpdate = (userData?['updatedAt'] as Timestamp?)?.toDate();
+    final leftAt = (userData?['pomodoroLeftAt'] as Timestamp?)?.toDate();
+
+    for (var doc in bookings.docs) {
+      final bookingData = doc.data();
+      final createdAt = (bookingData['createdAt'] as Timestamp?)?.toDate() ?? now;
+      bool shouldCancel = false;
+
+      // 1. Nếu chưa từng bắt đầu học (không có status) và quá 30p từ khi đặt
+      if (status == null) {
+        if (now.difference(createdAt).inMinutes >= 30) {
+          shouldCancel = true;
+        }
+      }
+      // 2. Nếu đang ở trạng thái tạm dừng hoặc đã rời đi quá 30p
+      else if (status == 'paused' || status == 'left') {
+        final timeToCheck = leftAt ?? lastUpdate ?? createdAt;
+        if (now.difference(timeToCheck).inMinutes >= 30) {
+          shouldCancel = true;
+        }
+      }
+      // 3. Nếu không phải đang học (focusing) mà quá 30p không cập nhật
+      else if (status != 'focusing') {
+        final timeToCheck = lastUpdate ?? createdAt;
+        if (now.difference(timeToCheck).inMinutes >= 30) {
+          shouldCancel = true;
+        }
+      }
+
+      if (shouldCancel) {
+        await cancelBooking(bookingId: doc.id);
+        print('Auto-cancelled stale booking: ${doc.id} for user: $userId');
+      }
+    }
+  }
+
+  /// (Tùy chọn) Hàm dọn dẹp toàn bộ hệ thống - Có thể gọi bởi Admin hoặc định kỳ
+  Future<void> globalCleanup() async {
+    final confirmedBookings = await _db.collection('bookings')
+        .where('status', isEqualTo: 'Confirmed')
+        .get();
+
+    for (var doc in confirmedBookings.docs) {
+      final userId = doc.data()['userId'];
+      if (userId != null) {
+        await cleanupUserBooking(userId);
+      }
+    }
   }
 
   Future<String> bookRoom({required String userId, required String roomId, required int seatCount, required DateTime bookingDate, required String startTime, required String endTime}) async {
@@ -53,7 +124,6 @@ class RoomsService {
       if (available < seatCount) throw Exception('Không đủ ghế trống');
 
       tx.update(roomRef, {'availableSeats': available - seatCount});
-      // Cập nhật currentRoomId cho user ngay khi đặt chỗ
       tx.set(userRef, {'currentRoomId': roomId}, SetOptions(merge: true));
 
       final bookingData = {
@@ -66,7 +136,7 @@ class RoomsService {
         'endTime': endTime,
         'status': 'Confirmed',
         'emailSent': false,
-        'createdAt': Timestamp.now(),
+        'createdAt': FieldValue.serverTimestamp(),
       };
 
       tx.set(bookingRef, bookingData);
@@ -98,9 +168,8 @@ class RoomsService {
         tx.update(roomRef, {'availableSeats': available + seatCount});
       }
 
-      // Xóa currentRoomId khi hủy hoặc kết thúc
       tx.update(userRef, {'currentRoomId': FieldValue.delete()});
-      tx.update(bookingRef, {'status': 'Cancelled', 'cancelledAt': Timestamp.now()});
+      tx.update(bookingRef, {'status': 'Cancelled', 'cancelledAt': FieldValue.serverTimestamp()});
     });
   }
 }
