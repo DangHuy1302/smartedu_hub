@@ -1,4 +1,7 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';import 'package:intl/intl.dart';
+import 'package:just_audio/just_audio.dart';
+import '../models/ocr_document.dart';
+import '../services/document_service.dart';
 
 class DocumentScreen extends StatefulWidget {
   const DocumentScreen({super.key});
@@ -8,36 +11,57 @@ class DocumentScreen extends StatefulWidget {
 }
 
 class _DocumentScreenState extends State<DocumentScreen> {
-  // Mock data cho danh sách tài liệu
-  final List<Map<String, String>> _documents = [
-    {
-      'title': 'AI in Education - Overview',
-      'date': '20/10/2023',
-      'content': 'Artificial Intelligence is transforming how we learn...',
-      'translation': 'Trí tuệ nhân tạo đang thay đổi cách chúng ta học tập...'
-    },
-    {
-      'title': 'TOEIC Reading Practice Part 5',
-      'date': '18/10/2023',
-      'content': 'The company announced that it will implement new policies...',
-      'translation': 'Công ty thông báo rằng họ sẽ triển khai các chính sách mới...'
-    },
-    {
-      'title': 'Cloud Computing Basics',
-      'date': '15/10/2023',
-      'content': 'Cloud computing is the on-demand availability of computer system resources...',
-      'translation': 'Điện toán đám mây là khả năng cung cấp theo yêu cầu các tài nguyên hệ thống máy tính...'
-    },
-  ];
+  final DocumentService _documentService = DocumentService();
+  final AudioPlayer _audioPlayer = AudioPlayer();
 
-  Map<String, String>? _selectedDoc;
+  OcrDocumentModel? _selectedDoc;
+  bool _isPlaying = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _audioPlayer.playerStateStream.listen((state) {
+      if (mounted) {
+        setState(() => _isPlaying = state.playing);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _audioPlayer.dispose();
+    super.dispose();
+  }
+
+  Future<void> _playPodcast(String url) async {
+    try {
+      await _audioPlayer.setUrl(url);
+      await _audioPlayer.play();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi phát âm thanh: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _generatePodcast(OcrDocumentModel doc) async {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('🔊 Đang sử dụng Google AI để tạo Podcast...'),
+        backgroundColor: Colors.blue,
+      ),
+    );
+    await _documentService.processPodcastGeneration(doc);
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFFF8F9FA),
       appBar: AppBar(
-        title: const Text('Kho Tài liệu & Audio', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('Kho Tài liệu & Podcast', style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.white,
         foregroundColor: const Color(0xFF1565C0),
         elevation: 0,
@@ -45,164 +69,277 @@ class _DocumentScreenState extends State<DocumentScreen> {
           if (_selectedDoc != null)
             IconButton(
               icon: const Icon(Icons.close),
-              onPressed: () => setState(() => _selectedDoc = null),
+              onPressed: () {
+                _audioPlayer.stop();
+                setState(() => _selectedDoc = null);
+              },
             )
         ],
       ),
-      body: Stack(
-        children: [
-          _selectedDoc == null ? _buildListView() : _buildDetailView(),
-          
-          // 2.6. Trình điều khiển âm thanh (Audio Player Panel) - Cố định ở cạnh dưới
-          if (_selectedDoc != null) _buildAudioPlayer(),
-        ],
-      ),
+      body: _selectedDoc == null ? _buildListView() : _buildDetailAndPlayerView(),
     );
   }
 
-  // 2.6. Danh sách tài liệu (List View)
   Widget _buildListView() {
-    return ListView.separated(
-      padding: const EdgeInsets.all(16),
-      itemCount: _documents.length,
-      separatorBuilder: (context, index) => const SizedBox(height: 12),
-      itemBuilder: (context, index) {
-        final doc = _documents[index];
-        return Card(
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: BorderSide(color: Colors.grey[200]!),
-          ),
-          child: ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            leading: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: Colors.blue[50], borderRadius: BorderRadius.circular(12)),
-              child: const Icon(Icons.description_outlined, color: Color(0xFF1565C0)),
-            ),
-            title: Text(doc['title']!, style: const TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: Text('Ngày lưu: ${doc['date']}'),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-            onTap: () => setState(() => _selectedDoc = doc),
-          ),
+    return StreamBuilder<List<OcrDocumentModel>>(
+      stream: _documentService.getDocumentsStream(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Center(child: Text('Lỗi kết nối: ${snapshot.error}'));
+        }
+        final docs = snapshot.data ?? [];
+        if (docs.isEmpty) {
+          return _buildEmptyState();
+        }
+
+        return ListView.separated(
+          padding: const EdgeInsets.all(16),
+          itemCount: docs.length,
+          separatorBuilder: (context, index) => const SizedBox(height: 12),
+          itemBuilder: (context, index) {
+            final doc = docs[index];
+            final hasAudio = doc.audioUrl != null && doc.audioUrl!.isNotEmpty;
+
+            return Card(
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(color: Colors.grey[200]!),
+              ),
+              child: ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                      color: hasAudio ? Colors.orange[50] : Colors.blue[50],
+                      borderRadius: BorderRadius.circular(12)
+                  ),
+                  child: Icon(
+                      hasAudio ? Icons.headset : Icons.description_outlined,
+                      color: hasAudio ? Colors.orange[800] : const Color(0xFF1565C0)
+                  ),
+                ),
+                title: Text(doc.title, style: const TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: Text('Đã lưu: ${doc.createdAt != null ? DateFormat('dd/MM/yyyy HH:mm').format(doc.createdAt!) : "---"}'),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+                onTap: () => setState(() => _selectedDoc = doc),
+              ),
+            );
+          },
         );
       },
     );
   }
 
-  // 2.6. Màn hình xem chi tiết tài liệu (Clean UI)
-  Widget _buildDetailView() {
+  Widget _buildDetailAndPlayerView() {
+    return StreamBuilder<List<OcrDocumentModel>>(
+      stream: _documentService.getDocumentsStream(),
+      builder: (context, snapshot) {
+        OcrDocumentModel currentDoc = _selectedDoc!;
+        if (snapshot.hasData) {
+          try {
+            currentDoc = snapshot.data!.firstWhere((d) => d.documentId == _selectedDoc!.documentId);
+            _selectedDoc = currentDoc; // Cập nhật để đồng bộ khi tắt app bar
+          } catch (_) {}
+        }
+
+        return Stack(
+          children: [
+            _buildDetailContent(currentDoc),
+            _buildAudioPlayer(currentDoc),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildDetailContent(OcrDocumentModel doc) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(24, 24, 24, 120), // Padding bottom để không bị che bởi player
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 280),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(_selectedDoc!['title']!, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Color(0xFF1565C0))),
-          const SizedBox(height: 24),
-          
-          // Layout chia đôi hoặc dọc tùy màn hình
-          LayoutBuilder(builder: (context, constraints) {
-            bool isWide = constraints.maxWidth > 800;
-            return Flex(
-              direction: isWide ? Axis.horizontal : Axis.vertical,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  flex: isWide ? 1 : 0,
-                  child: _contentBox('TIẾNG ANH (GỐC)', _selectedDoc!['content']!, Colors.blue[50]!),
-                ),
-                if (isWide) const SizedBox(width: 24) else const SizedBox(height: 16),
-                Expanded(
-                  flex: isWide ? 1 : 0,
-                  child: _contentBox('TIẾNG VIỆT (DỊCH)', _selectedDoc!['translation']!, Colors.green[50]!),
-                ),
-              ],
-            );
-          }),
+          Text(doc.title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 20),
+          _contentSection('Nội dung tài liệu', doc.extractedText, Colors.blue[50]!),
+          if (doc.translatedText != null && doc.translatedText!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 16),
+              child: _contentSection('Bản dịch tiếng Việt', doc.translatedText!, Colors.orange[50]!),
+            ),
         ],
       ),
     );
   }
 
-  Widget _contentBox(String label, String text, Color bgColor) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black54)),
-          const SizedBox(height: 12),
-          Text(text, style: const TextStyle(fontSize: 18, height: 1.6, color: Colors.black87)),
-        ],
-      ),
-    );
-  }
+  Widget _buildAudioPlayer(OcrDocumentModel doc) {
+    final status = doc.audioStatus ?? 'none';
+    final url = doc.audioUrl;
+    final hasAudio = url != null && url.isNotEmpty;
 
-  // 2.6. Trình điều khiển âm thanh (Audio Player Panel)
-  Widget _buildAudioPlayer() {
     return Positioned(
-      bottom: 0,
-      left: 0,
-      right: 0,
+      bottom: 16, left: 16, right: 16,
       child: Container(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
           color: Colors.white,
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20, offset: const Offset(0, -5))],
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))],
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Row(
-              children: [
-                // Nút Phát Audio (Podcast)
-                ElevatedButton.icon(
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('🔊 Đang gọi Google Text-to-Speech API...'))
-                    );
-                  },
-                  icon: const Icon(Icons.record_voice_over),
-                  label: const Text('Phát Podcast AI'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1565C0),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                  ),
-                ),
-                const Spacer(),
-                const Icon(Icons.skip_previous, color: Color(0xFF1565C0)),
-                const SizedBox(width: 16),
-                const CircleAvatar(
-                  backgroundColor: Color(0xFF1565C0),
-                  child: Icon(Icons.play_arrow, color: Colors.white),
-                ),
-                const SizedBox(width: 16),
-                const Icon(Icons.skip_next, color: Color(0xFF1565C0)),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                const Text('0:00', style: TextStyle(fontSize: 12)),
-                Expanded(
-                  child: Slider(
-                    value: 0,
-                    onChanged: (v) {},
-                    activeColor: const Color(0xFF1565C0),
-                  ),
-                ),
-                const Text('3:45', style: TextStyle(fontSize: 12)),
-              ],
-            ),
+            if (status == 'generating')
+              const _GeneratingState()
+            else if (status == 'ready' && hasAudio)
+              _PlayerControls(
+                isPlaying: _isPlaying,
+                onPlayToggle: () => _isPlaying ? _audioPlayer.pause() : _playPodcast(url),
+                audioPlayer: _audioPlayer,
+                formatDuration: _formatDuration,
+              )
+            else
+              _GenerateButton(
+                onPressed: () => _generatePodcast(doc),
+                isError: status == 'error',
+              ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.library_books_outlined, size: 80, color: Colors.grey[300]),
+          const SizedBox(height: 16),
+          const Text('Kho tài liệu trống', style: TextStyle(fontSize: 18, color: Colors.grey)),
+        ],
+      ),
+    );
+  }
+
+  Widget _contentSection(String title, String text, Color color) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(12)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title.toUpperCase(), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.black54)),
+          const SizedBox(height: 8),
+          Text(text, style: const TextStyle(fontSize: 15, height: 1.5)),
+        ],
+      ),
+    );
+  }
+
+  String _formatDuration(Duration d) {
+    final minutes = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final seconds = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
+}
+
+class _GeneratingState extends StatelessWidget {
+  const _GeneratingState();
+  @override
+  Widget build(BuildContext context) {
+    return const Row(
+      children: [
+        SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+        SizedBox(width: 16),
+        Text('Google AI đang chuyển đổi văn bản...', style: TextStyle(fontStyle: FontStyle.italic)),
+      ],
+    );
+  }
+}
+
+class _PlayerControls extends StatelessWidget {
+  final bool isPlaying;
+  final VoidCallback onPlayToggle;
+  final AudioPlayer audioPlayer;
+  final String Function(Duration) formatDuration;
+
+  const _PlayerControls({required this.isPlaying, required this.onPlayToggle, required this.audioPlayer, required this.formatDuration});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            IconButton(icon: const Icon(Icons.replay_10), onPressed: () => audioPlayer.seek(audioPlayer.position - const Duration(seconds: 10))),
+            const SizedBox(width: 20),
+            CircleAvatar(
+              radius: 30, backgroundColor: const Color(0xFF1565C0),
+              child: IconButton(icon: Icon(isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.white), iconSize: 32, onPressed: onPlayToggle),
+            ),
+            const SizedBox(width: 20),
+            IconButton(icon: const Icon(Icons.forward_10), onPressed: () => audioPlayer.seek(audioPlayer.position + const Duration(seconds: 10))),
+          ],
+        ),
+        const SizedBox(height: 10),
+        StreamBuilder<Duration>(
+          stream: audioPlayer.positionStream,
+          builder: (context, snapshot) {
+            final pos = snapshot.data ?? Duration.zero;
+            final dur = audioPlayer.duration ?? Duration.zero;
+            return Column(
+              children: [
+                SliderTheme(
+                  data: SliderTheme.of(context).copyWith(trackHeight: 4, thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6)),
+                  child: Slider(
+                    value: pos.inMilliseconds.toDouble().clamp(0, dur.inMilliseconds.toDouble() > 0 ? dur.inMilliseconds.toDouble() : 1),
+                    max: dur.inMilliseconds.toDouble() > 0 ? dur.inMilliseconds.toDouble() : 1,
+                    onChanged: (v) => audioPlayer.seek(Duration(milliseconds: v.toInt())),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(formatDuration(pos), style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                      Text(formatDuration(dur), style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                    ],
+                  ),
+                )
+              ],
+            );
+          },
+        )
+      ],
+    );
+  }
+}
+
+class _GenerateButton extends StatelessWidget {
+  final VoidCallback onPressed;
+  final bool isError;
+  const _GenerateButton({required this.onPressed, this.isError = false});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: onPressed,
+        icon: Icon(isError ? Icons.refresh : Icons.auto_awesome),
+        label: Text(isError ? 'THỬ TẠO LẠI PODCAST' : 'TẠO PODCAST AI'),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: isError ? Colors.red[700] : Colors.orange[800],
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         ),
       ),
     );

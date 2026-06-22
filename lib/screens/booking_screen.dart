@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../services/rooms_service.dart';
 
 class BookingScreen extends StatefulWidget {
   const BookingScreen({super.key});
@@ -8,19 +12,17 @@ class BookingScreen extends StatefulWidget {
 }
 
 class _BookingScreenState extends State<BookingScreen> {
-  // Mock data for locations
-  final List<Map<String, dynamic>> _locations = [
-    {'name': 'Thư viện Tầng 1 - Nhà T35', 'seats': 12, 'total': 50, 'lat': 21.007, 'lng': 105.824},
-    {'name': 'The Coffee House (Chùa Bộc)', 'seats': 5, 'total': 20, 'lat': 21.008, 'lng': 105.826},
-    {'name': 'Không gian tự học - Nhà C1', 'seats': 0, 'total': 15, 'lat': 21.006, 'lng': 105.823},
-  ];
+  final RoomsService _roomsService = RoomsService();
+
+  // initial center (fallback)
+  final LatLng _initialCenter = LatLng(21.007, 105.824);
 
   void _showBookingDetails(Map<String, dynamic> location) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => _BookingBottomSheet(location: location),
+      builder: (context) => _BookingBottomSheet(location: location, roomsService: _roomsService),
     );
   }
 
@@ -40,50 +42,118 @@ class _BookingScreenState extends State<BookingScreen> {
       ),
       body: Stack(
         children: [
-          // 2.3. Bản đồ Tràn viền (Placeholder for Google Maps)
-          Container(
-            width: double.infinity,
-            height: double.infinity,
-            color: const Color(0xFFE3F2FD),
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.map_rounded, size: 100, color: Colors.blueAccent),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Google Maps SDK - Khu vực ĐH Thủy Lợi',
-                    style: TextStyle(color: Colors.blueGrey, fontSize: 18, fontWeight: FontWeight.w500),
+          StreamBuilder<List<Map<String, dynamic>>>(
+            stream: _roomsService.streamRooms(),
+            builder: (context, snap) {
+              final rooms = snap.data ?? [];
+              final center = rooms.isNotEmpty
+                  ? LatLng(rooms.first['latitude'] as double, rooms.first['longitude'] as double)
+                  : _initialCenter;
+
+              final user = FirebaseAuth.instance.currentUser;
+              if (user == null) {
+                // Not logged in: just show rooms
+                return FlutterMap(
+                  options: MapOptions(
+                    initialCenter: center,
+                    initialZoom: 17.5,
+                    minZoom: 13.0,
+                    maxZoom: 20.0,
+                    maxBounds: LatLngBounds(LatLng(21.003, 105.820), LatLng(21.012, 105.830)),
+                    onTap: (tapPos, latlng) {
+                      if (Navigator.canPop(context)) Navigator.pop(context);
+                    },
                   ),
-                  const SizedBox(height: 24),
-                  // Mock Markers
-                  Wrap(
-                    spacing: 20,
-                    children: _locations.map((loc) => InkWell(
-                      onTap: () => _showBookingDetails(loc),
-                      child: Column(
-                        children: [
-                          Icon(
-                            Icons.location_on, 
-                            size: 48, 
-                            color: loc['seats'] > 0 ? Colors.red : Colors.grey
+                  children: [
+                    TileLayer(urlTemplate: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', subdomains: const ['a', 'b', 'c'], userAgentPackageName: 'com.example.smartedu_hub'),
+                    MarkerLayer(markers: rooms.map((loc) {
+                      final lat = (loc['latitude'] ?? loc['lat']) as double;
+                      final lng = (loc['longitude'] ?? loc['lng']) as double;
+                      final seats = (loc['availableSeats'] ?? loc['seats'] ?? 0) as int;
+                      return Marker(
+                        width: 80,
+                        height: 80,
+                        point: LatLng(lat, lng),
+                        child: GestureDetector(
+                          onTap: () => _showBookingDetails(loc),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.location_on, size: 44, color: seats > 0 ? Colors.red : Colors.grey),
+                              Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), boxShadow: const [BoxShadow(blurRadius: 4, color: Colors.black26)]), child: Text(loc['name'] ?? '', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold))),
+                            ],
                           ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(8),
-                              boxShadow: const [BoxShadow(blurRadius: 4, color: Colors.black26)],
+                        ),
+                      );
+                    }).toList()),
+                  ],
+                );
+              }
+
+              // If logged in, include user's bookings to mark booked rooms green and allow undo
+              return StreamBuilder<List<Map<String, dynamic>>>(
+                stream: _roomsService.streamUserBookings(user.uid),
+                builder: (context, bookingSnap) {
+                  final myBookings = bookingSnap.data ?? [];
+                  // map roomId -> booking
+                  final bookedByMe = <String, Map<String, dynamic>>{};
+                  for (final b in myBookings) {
+                    final roomId = b['roomId'] as String?;
+                    if (roomId != null) bookedByMe[roomId] = b;
+                  }
+
+                  return FlutterMap(
+                    options: MapOptions(
+                      center: center,
+                      zoom: 17.5,
+                      minZoom: 13.0,
+                      maxZoom: 20.0,
+                      maxBounds: LatLngBounds(LatLng(21.003, 105.820), LatLng(21.012, 105.830)),
+                      onTap: (tapPos, latlng) {
+                        if (Navigator.canPop(context)) Navigator.pop(context);
+                      },
+                    ),
+                    children: [
+                      TileLayer(urlTemplate: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', subdomains: const ['a', 'b', 'c'], userAgentPackageName: 'com.example.smartedu_hub'),
+                      MarkerLayer(markers: rooms.map((loc) {
+                        final lat = (loc['latitude'] ?? loc['lat']) as double;
+                        final lng = (loc['longitude'] ?? loc['lng']) as double;
+                        final seats = (loc['availableSeats'] ?? loc['seats'] ?? 0) as int;
+                        final roomId = loc['id'] ?? loc['roomId'];
+                        final myBooking = roomId != null ? bookedByMe[roomId] : null;
+                        final isBooked = myBooking != null;
+                        final bookedSeatCount = isBooked ? (myBooking['seatCount'] ?? 0) as int : 0;
+
+                        final markerColor = isBooked ? Colors.green : (seats > 0 ? Colors.red : Colors.grey);
+
+                        final locWithBooking = {...loc};
+                        if (isBooked) {
+                          locWithBooking['isBookedByMe'] = true;
+                          locWithBooking['bookingId'] = myBooking['bookingId'] ?? myBooking['id'];
+                          locWithBooking['bookedSeatCount'] = bookedSeatCount;
+                        }
+
+                        return Marker(
+                          width: 80,
+                          height: 80,
+                          point: LatLng(lat, lng),
+                          child:  GestureDetector(
+                            onTap: () => _showBookingDetails(locWithBooking),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.location_on, size: 44, color: markerColor),
+                                Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), boxShadow: const [BoxShadow(blurRadius: 4, color: Colors.black26)]), child: Text(loc['name'] ?? '', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold))),
+                              ],
                             ),
-                            child: Text(loc['name'], style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                          )
-                        ],
-                      ),
-                    )).toList(),
-                  ),
-                ],
-              ),
-            ),
+                          ),
+                        );
+                      }).toList()),
+                    ],
+                  );
+                },
+              );
+            },
           ),
           
 
@@ -95,7 +165,8 @@ class _BookingScreenState extends State<BookingScreen> {
 
 class _BookingBottomSheet extends StatefulWidget {
   final Map<String, dynamic> location;
-  const _BookingBottomSheet({required this.location});
+  final RoomsService roomsService;
+  const _BookingBottomSheet({required this.location, required this.roomsService});
 
   @override
   State<_BookingBottomSheet> createState() => _BookingBottomSheetState();
@@ -103,6 +174,15 @@ class _BookingBottomSheet extends StatefulWidget {
 
 class _BookingBottomSheetState extends State<_BookingBottomSheet> {
   int _seatCount = 1;
+
+  @override
+  void initState() {
+    super.initState();
+    final booked = widget.location['bookedSeatCount'] as int?;
+    if (booked != null && booked > 0) {
+      _seatCount = booked;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -134,11 +214,11 @@ class _BookingBottomSheetState extends State<_BookingBottomSheet> {
               const Icon(Icons.info_outline, size: 18, color: Colors.blue),
               const SizedBox(width: 8),
               Text(
-                'Trạng thái: Còn ${widget.location['seats']} / ${widget.location['total']} chỗ trống',
+                'Trạng thái: Còn ${widget.location['availableSeats'] ?? widget.location['seats']} / ${widget.location['totalSeats']} chỗ trống',
                 style: TextStyle(
                   fontSize: 16, 
                   fontWeight: FontWeight.w600,
-                  color: widget.location['seats'] > 0 ? Colors.green : Colors.red,
+                  color: (widget.location['availableSeats'] ?? widget.location['seats']) > 0 ? Colors.green : Colors.red,
                 ),
               ),
             ],
@@ -156,29 +236,75 @@ class _BookingBottomSheetState extends State<_BookingBottomSheet> {
                 child: Text('$_seatCount', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
               ),
               _counterButton(Icons.add, () {
-                if (_seatCount < 5 && _seatCount < widget.location['seats']) {
+                final maxAvailable = (widget.location['availableSeats'] ?? widget.location['seats']) as int;
+                if (_seatCount < 5 && _seatCount < maxAvailable) {
                   setState(() => _seatCount++);
                 }
               }),
               const Spacer(),
-              ElevatedButton(
-                onPressed: widget.location['seats'] > 0 ? () {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('🎉 Đặt chỗ thành công! Email xác nhận đã được gửi.'),
-                      backgroundColor: Colors.green,
-                    )
-                  );
-                } : null,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFFF9800), // Cam nhấn (Màu 4)
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              if (widget.location['isBookedByMe'] == true) ...[
+                ElevatedButton(
+                  onPressed: () async {
+                    final bookingId = widget.location['bookingId'];
+                    if (bookingId == null) return;
+                    try {
+                      await widget.roomsService.cancelBooking(bookingId: bookingId);
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã hoàn tác đặt chỗ.'), backgroundColor: Colors.orange));
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Hoàn tác thất bại: ${e.toString()}')));
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Text('Hoàn tác đặt chỗ', style: TextStyle(fontWeight: FontWeight.bold)),
                 ),
-                child: const Text('Giữ chỗ ngay', style: TextStyle(fontWeight: FontWeight.bold)),
-              ),
+              ] else ...[
+                ElevatedButton(
+                  onPressed: (widget.location['availableSeats'] ?? widget.location['seats']) > 0 ? () async {
+                    final user = FirebaseAuth.instance.currentUser;
+                    if (user == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vui lòng đăng nhập trước khi đặt chỗ')));
+                      return;
+                    }
+
+                    final seatCount = _seatCount;
+                    final roomId = widget.location['id'] ?? widget.location['roomId'];
+                    if (roomId == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Lỗi phòng không xác định')));
+                      return;
+                    }
+
+                    try {
+                      await widget.roomsService.bookRoom(
+                        userId: user.uid,
+                        roomId: roomId,
+                        seatCount: seatCount,
+                        bookingDate: DateTime.now(),
+                        startTime: 'Now',
+                        endTime: 'Later',
+                      );
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('🎉 Đặt chỗ thành công! Email xác nhận đã được gửi.'), backgroundColor: Colors.green)
+                      );
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Đặt chỗ thất bại: ${e.toString()}')));
+                    }
+                  } : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFFF9800), // Cam nhấn (Màu 4)
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Text('Giữ chỗ ngay', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 20),
