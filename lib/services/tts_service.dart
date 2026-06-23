@@ -5,8 +5,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import '../secret.dart';
 
 class TtsService {
-  // Use the same local API key stored in lib/secret.dart
-  final String _apiKey = GOOGLE_CLOUD_API_KEY;
+  final String _apiKey = 'AIzaSyBUkSuyuhl5x5U1Zg2TmHB7yYou3rMEij8';
 
   Future<String?> generateRemotePodcast({
     required String docId,
