@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/google_sign_in_service.dart';
 import '../services/rooms_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'admin_button.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -104,6 +105,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     'Hôm nay bạn muốn tập trung vào việc gì?',
                     style: TextStyle(fontSize: 18, color: Colors.black54),
                   ),
+                  const AdminButton(), 
                   const SizedBox(height: 48),
                   GridView.count(
                     shrinkWrap: true,
