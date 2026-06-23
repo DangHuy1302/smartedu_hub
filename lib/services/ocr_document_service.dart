@@ -5,16 +5,20 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 
-// Lưu ý: Nên chuyển cái này vào file config riêng hoặc biến môi trường
-const String googleCloudApiKey = '<YOUR_GOOGLE_CLOUD_API_KEY>';
+import '../secret.dart';
+
+// Lưu ý: API key được lưu trong `lib/secret.dart` (local, không commit)
+const String googleCloudApiKey = GOOGLE_CLOUD_API_KEY;
 
 class OcrDocumentService {
   static final OcrDocumentService _instance = OcrDocumentService._internal();
   factory OcrDocumentService() => _instance;
   OcrDocumentService._internal();
 
-  static const String _visionApiBase = 'https://vision.googleapis.com/v1/images:annotate';
-  static const String _translateApiBase = 'https://translation.googleapis.com/language/translate/v2';
+  static const String _visionApiBase =
+      'https://vision.googleapis.com/v1/images:annotate';
+  static const String _translateApiBase =
+      'https://translation.googleapis.com/language/translate/v2';
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _firebaseAuth = FirebaseAuth.instance;
@@ -40,7 +44,9 @@ class OcrDocumentService {
       'requests': [
         {
           'image': {'content': encoded},
-          'features': [{'type': 'TEXT_DETECTION', 'maxResults': 1}],
+          'features': [
+            {'type': 'DOCUMENT_TEXT_DETECTION', 'maxResults': 1},
+          ],
         },
       ],
     });
@@ -52,12 +58,18 @@ class OcrDocumentService {
     );
 
     if (response.statusCode != 200) {
-      throw Exception('Vision API error: ${response.statusCode}');
+      print('Vision API response: ${response.statusCode} ${response.body}');
+      throw Exception(
+        'Vision API error: ${response.statusCode} — ${response.body}',
+      );
     }
 
     final decoded = jsonDecode(response.body) as Map<String, dynamic>;
-    final firstResponse = (decoded['responses'] as List<dynamic>?)?.first as Map<String, dynamic>?;
-    final detection = firstResponse?['fullTextAnnotation'] as Map<String, dynamic>?;
+    final firstResponse =
+        (decoded['responses'] as List<dynamic>?)?.first
+            as Map<String, dynamic>?;
+    final detection =
+        firstResponse?['fullTextAnnotation'] as Map<String, dynamic>?;
     return detection != null ? (detection['text'] as String? ?? '') : '';
   }
 
@@ -77,10 +89,17 @@ class OcrDocumentService {
       body: body,
     );
 
-    if (response.statusCode != 200) throw Exception('Translation error');
+    if (response.statusCode != 200) {
+      print('Translate API response: ${response.statusCode} ${response.body}');
+      throw Exception(
+        'Translation error: ${response.statusCode} — ${response.body}',
+      );
+    }
 
     final decoded = jsonDecode(response.body) as Map<String, dynamic>;
-    final translations = (decoded['data'] as Map<String, dynamic>?)?['translations'] as List<dynamic>?;
+    final translations =
+        (decoded['data'] as Map<String, dynamic>?)?['translations']
+            as List<dynamic>?;
     return translations?.first['translatedText'] as String? ?? '';
   }
 
@@ -89,7 +108,10 @@ class OcrDocumentService {
       final fileName = '${DateTime.now().millisecondsSinceEpoch}_${file.name}';
       final ref = _storage.ref().child('ocr_images/$fileName');
       final bytes = await file.readAsBytes();
-      final snapshot = await ref.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
+      final snapshot = await ref.putData(
+        bytes,
+        SettableMetadata(contentType: 'image/jpeg'),
+      );
       return await snapshot.ref.getDownloadURL();
     } catch (e) {
       return null;
