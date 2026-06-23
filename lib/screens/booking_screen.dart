@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import '../services/zoho_form_service.dart';
+import '../services/email_service.dart';
 
 class BookingScreen extends StatefulWidget {
   const BookingScreen({super.key});
@@ -176,15 +178,22 @@ class _BookingBottomSheetState extends State<_BookingBottomSheet> {
               }),
               const Spacer(),
               ElevatedButton(
-                onPressed: widget.location['seats'] > 0 ? () {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('🎉 Đặt chỗ thành công! Email xác nhận đã được gửi.'),
-                      backgroundColor: Colors.green,
-                    )
-                  );
-                } : null,
+                onPressed: widget.location['seats'] > 0 ? () async {
+                    await sendBookingEmail(
+                      toEmail: 'levandan123321@gmail.com', 
+                      bookingId: 'SEH-123456',
+                      roomName: widget.location['name'] ?? 'Phong hoc',
+                    );
+
+                    if (!context.mounted) return;
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Dat cho thanh cong! Email xac nhan da duoc gui.'),
+                        backgroundColor: Colors.green,
+                      )
+                    );
+                  } : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFFF9800), // Cam nhấn (Màu 4)
                   foregroundColor: Colors.white,
@@ -196,6 +205,19 @@ class _BookingBottomSheetState extends State<_BookingBottomSheet> {
             ],
           ),
           const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () => openZohoForm(),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: const Text('Đánh giá phòng học', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ),
         ],
       ),
     );
