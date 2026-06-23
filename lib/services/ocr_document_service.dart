@@ -5,10 +5,8 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 
-import '../secret.dart';
-
 // Lưu ý: API key được lưu trong `lib/secret.dart` (local, không commit)
-const String googleCloudApiKey = GOOGLE_CLOUD_API_KEY;
+const String googleCloudApiKey = 'AIzaSyCsr3_uu0kGycGLIsVxzPul6NGGmxQHqO8';
 
 class OcrDocumentService {
   static final OcrDocumentService _instance = OcrDocumentService._internal();

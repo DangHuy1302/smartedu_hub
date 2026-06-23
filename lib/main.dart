@@ -7,6 +7,7 @@ import 'screens/booking_screen.dart';
 import 'screens/ocr_screen.dart';
 import 'screens/pomodoro_screen.dart';
 import 'screens/document_screen.dart';
+import 'screens/user_profile_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -28,7 +29,6 @@ class SmartEduHubApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
       ),
-      // Initial route will be HomeScreen
       initialRoute: '/',
       routes: {
         '/': (context) => const HomeScreen(),
@@ -37,6 +37,7 @@ class SmartEduHubApp extends StatelessWidget {
         '/ocr': (context) => const OcrScreen(),
         '/pomodoro': (context) => const PomodoroScreen(),
         '/document': (context) => const DocumentScreen(),
+        '/profile': (context) => const UserProfileScreen(),
       },
       debugShowCheckedModeBanner: false,
     );

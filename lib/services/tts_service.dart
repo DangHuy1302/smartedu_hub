@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:firebase_storage/firebase_storage.dart';
-import '../secret.dart';
 
 class TtsService {
   final String _apiKey = 'AIzaSyBUkSuyuhl5x5U1Zg2TmHB7yYou3rMEij8';
