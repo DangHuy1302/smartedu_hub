@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/google_sign_in_service.dart';
+import '../services/rooms_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'admin_button.dart';
 
@@ -13,11 +14,19 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   late Stream<User?> _authStream;
   final GoogleSignInService _googleSignInService = GoogleSignInService();
+  final RoomsService _roomsService = RoomsService();
 
   @override
   void initState() {
     super.initState();
     _authStream = _googleSignInService.authStateChanges;
+    
+    // Tự động kiểm tra và dọn dẹp đặt chỗ cũ khi khởi động app
+    _authStream.listen((user) {
+      if (user != null) {
+        _roomsService.cleanupUserBooking(user.uid);
+      }
+    });
   }
 
   @override
@@ -26,22 +35,19 @@ class _HomeScreenState extends State<HomeScreen> {
     bool isDesktop = screenWidth > 800;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA), // Xám cực nhạt
+      backgroundColor: const Color(0xFFF8F9FA),
       appBar: AppBar(
-        title: Row(
+        title: const Row(
           children: [
-            const Icon(Icons.school, color: Colors.white, size: 28),
-            const SizedBox(width: 8),
-            const Text(
+            Icon(Icons.school, color: Colors.white, size: 28),
+            SizedBox(width: 8),
+            Text(
               'SmartEdu Hub',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
+              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
             ),
           ],
         ),
-        backgroundColor: const Color(0xFF1565C0), // Xanh biển đậm
+        backgroundColor: const Color(0xFF1565C0),
         elevation: 0,
         actions: [
           if (isDesktop) ...[
@@ -72,10 +78,7 @@ class _HomeScreenState extends State<HomeScreen> {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // 2.2. Màn hình Trang chủ - Lời giới thiệu đầu trang (Hero Section)
             _buildHeroSection(isDesktop),
-            
-            // MAIN CONTENT (Grid View)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 60.0),
               constraints: const BoxConstraints(maxWidth: 1200),
@@ -103,8 +106,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const AdminButton(), 
                   const SizedBox(height: 48),
-                  
-                  // Khối Chức năng chính (Grid View)
                   GridView.count(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
@@ -113,59 +114,23 @@ class _HomeScreenState extends State<HomeScreen> {
                     mainAxisSpacing: 24,
                     childAspectRatio: 0.9,
                     children: [
-                      _buildMenuCard(
-                        context,
-                        '📍 Bản đồ Đặt chỗ',
-                        'Tìm kiếm và đặt không gian học tập ảo quanh trường.',
-                        Icons.map_outlined,
-                        Colors.blue,
-                        '/booking',
-                      ),
-                      _buildMenuCard(
-                        context,
-                        '⏱️ Phòng học Pomodoro',
-                        'Không gian đếm ngược tập trung, theo dõi trạng thái bạn bè.',
-                        Icons.timer_outlined,
-                        Colors.orange,
-                        '/pomodoro',
-                      ),
-                      _buildMenuCard(
-                        context,
-                        '📷 Máy quét AI (OCR)',
-                        'Chụp/Tải ảnh tài liệu để bóc tách chữ viết và dịch nghĩa.',
-                        Icons.document_scanner_outlined,
-                        Colors.purple,
-                        '/ocr',
-                      ),
-                      _buildMenuCard(
-                        context,
-                        '📁 Kho Tài liệu & Audio',
-                        'Lưu trữ các bài đọc cũ và bật trợ lý phát âm Audio Podcast.',
-                        Icons.headphones_outlined,
-                        Colors.green,
-                        '/document',
-                      ),
+                      _buildMenuCard(context, '📍 Bản đồ Đặt chỗ', 'Tìm kiếm và đặt không gian học tập ảo quanh trường.', Icons.map_outlined, Colors.blue, '/booking'),
+                      _buildMenuCard(context, '⏱️ Phòng học Pomodoro', 'Không gian đếm ngược tập trung, theo dõi trạng thái bạn bè.', Icons.timer_outlined, Colors.orange, '/pomodoro'),
+                      _buildMenuCard(context, '📷 Máy quét AI (OCR)', 'Chụp/Tải ảnh tài liệu để bóc tách chữ viết và dịch nghĩa.', Icons.document_scanner_outlined, Colors.purple, '/ocr'),
+                      _buildMenuCard(context, '📁 Kho Tài liệu & Audio', 'Lưu trữ các bài đọc cũ và bật trợ lý phát âm Audio Podcast.', Icons.headphones_outlined, Colors.green, '/document'),
                     ],
                   ),
                 ],
               ),
             ),
-            
-            // Extra Footer section
             Container(
               padding: const EdgeInsets.all(40),
               color: Colors.white,
               width: double.infinity,
               child: const Column(
                 children: [
-                  Text(
-                    'Hệ sinh thái SmartEdu Hub © 2024',
-                    style: TextStyle(color: Colors.black38),
-                  ),
-                  Text(
-                    'Nhóm: G5_Ca4 - Lớp 65HTTT (Đại học Thủy Lợi)',
-                    style: TextStyle(color: Colors.black38),
-                  ),
+                  Text('Hệ sinh thái SmartEdu Hub © 2024', style: TextStyle(color: Colors.black38)),
+                  Text('Nhóm: G5_Ca4 - Lớp 65HTTT (Đại học Thủy Lợi)', style: TextStyle(color: Colors.black38)),
                 ],
               ),
             ),
@@ -191,13 +156,7 @@ class _HomeScreenState extends State<HomeScreen> {
           const Text(
             'Học tập thông minh cùng\nSmartEdu Hub',
             textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 48,
-              fontWeight: FontWeight.w900,
-              color: Colors.white,
-              height: 1.1,
-              letterSpacing: -1,
-            ),
+            style: TextStyle(fontSize: 48, fontWeight: FontWeight.w900, color: Colors.white, height: 1.1, letterSpacing: -1),
           ),
           const SizedBox(height: 24),
           ConstrainedBox(
@@ -205,11 +164,7 @@ class _HomeScreenState extends State<HomeScreen> {
             child: const Text(
               'Hệ sinh thái đặt không gian học tập, số hóa tài liệu AI và luyện nghe TOEIC Podcast dành riêng cho sinh viên Cloud-Native.',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 20,
-                color: Colors.white,
-                height: 1.5,
-              ),
+              style: TextStyle(fontSize: 20, color: Colors.white, height: 1.5),
             ),
           ),
           const SizedBox(height: 40),
@@ -221,30 +176,13 @@ class _HomeScreenState extends State<HomeScreen> {
               ElevatedButton(
                 onPressed: () => Navigator.pushNamed(context, '/booking'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFFF9800), // Cam nhấn (Màu 4)
+                  backgroundColor: const Color(0xFFFF9800),
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 22),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(50)),
                   elevation: 8,
-                  shadowColor: Colors.orange.withOpacity(0.4),
                 ),
-                child: const Text(
-                  'Bắt đầu Đặt chỗ',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-              ),
-              OutlinedButton(
-                onPressed: () {},
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.white,
-                  side: const BorderSide(color: Colors.white, width: 2),
-                  padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 22),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(50)),
-                ),
-                child: const Text(
-                  'Tìm hiểu về OCR AI',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
+                child: const Text('Bắt đầu Đặt chỗ', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               ),
             ],
           ),
@@ -258,14 +196,7 @@ class _HomeScreenState extends State<HomeScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 8.0),
       child: TextButton(
         onPressed: () => Navigator.pushNamed(context, route),
-        child: Text(
-          title,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 15,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
+        child: Text(title, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500)),
       ),
     );
   }
@@ -279,44 +210,20 @@ class _HomeScreenState extends State<HomeScreen> {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(24),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              spreadRadius: 0,
-              blurRadius: 20,
-              offset: const Offset(0, 10),
-            ),
-          ],
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 10))],
         ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                shape: BoxShape.circle,
-              ),
+              decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
               child: Icon(icon, size: 36, color: color),
             ),
             const Spacer(),
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
-              ),
-            ),
+            Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black87)),
             const SizedBox(height: 10),
-            Text(
-              subtitle,
-              style: const TextStyle(
-                fontSize: 15,
-                color: Colors.black54,
-                height: 1.4,
-              ),
-            ),
+            Text(subtitle, style: const TextStyle(fontSize: 15, color: Colors.black54, height: 1.4)),
           ],
         ),
       ),
@@ -335,24 +242,12 @@ class _HomeScreenState extends State<HomeScreen> {
         itemBuilder: (BuildContext context) => [
           PopupMenuItem(
             value: 'profile',
-            child: Row(
-              children: [
-                const Icon(Icons.person_outline, size: 20),
-                const SizedBox(width: 8),
-                Text(user.displayName ?? 'Hồ sơ'),
-              ],
-            ),
+            child: Row(children: [const Icon(Icons.person_outline, size: 20), const SizedBox(width: 8), Text(user.displayName ?? 'Hồ sơ')]),
           ),
           const PopupMenuDivider(),
           const PopupMenuItem(
             value: 'logout',
-            child: Row(
-              children: [
-                Icon(Icons.logout, size: 20, color: Colors.red),
-                SizedBox(width: 8),
-                Text('Đăng xuất', style: TextStyle(color: Colors.red)),
-              ],
-            ),
+            child: Row(children: [Icon(Icons.logout, size: 20, color: Colors.red), SizedBox(width: 8), Text('Đăng xuất', style: TextStyle(color: Colors.red))]),
           ),
         ],
         child: CircleAvatar(

@@ -4,12 +4,19 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   cloud_firestore
+  file_selector_windows
   firebase_auth
   firebase_core
+<<<<<<< HEAD
   url_launcher_windows
+=======
+  firebase_storage
+  flutter_tts
+>>>>>>> e6113fa1f176e7b530ece024bf6c087f641ccfc1
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
+  jni
 )
 
 set(PLUGIN_BUNDLED_LIBRARIES)
