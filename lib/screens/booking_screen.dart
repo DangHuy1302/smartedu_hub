@@ -3,7 +3,6 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/rooms_service.dart';
-import 'pomodoro_screen.dart';
 
 class BookingScreen extends StatefulWidget {
   const BookingScreen({super.key});
@@ -20,7 +19,6 @@ class _BookingScreenState extends State<BookingScreen> {
   @override
   void initState() {
     super.initState();
-    // Khởi tạo stream ở initState để tránh việc tạo lại stream mỗi khi build gây lỗi trên Web
     _roomsStream = _roomsService.streamRooms();
   }
 
@@ -80,7 +78,7 @@ class _BookingScreenState extends State<BookingScreen> {
 
   Widget _buildMap(LatLng center, List<Map<String, dynamic>> rooms, Map<String, Map<String, dynamic>> bookedByMe) {
     return FlutterMap(
-      key: const ValueKey('booking_map_widget'), // Thêm key để Flutter quản lý widget tốt hơn trên Web
+      key: const ValueKey('booking_map_widget'),
       options: MapOptions(
         initialCenter: center,
         initialZoom: 17.0,
@@ -270,10 +268,10 @@ class _BookingBottomSheetState extends State<_BookingBottomSheet> {
                   child: ElevatedButton.icon(
                     onPressed: () {
                       Navigator.pop(context);
-                      Navigator.push(context, MaterialPageRoute(builder: (context) => const PomodoroScreen()));
+                      Navigator.pushNamed(context, '/pomodoro');
                     },
                     icon: const Icon(Icons.timer),
-                    label: const Text('Vào phòng Pomodoro'),
+                    label: const Text('Học tại phòng này'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF1565C0),
                       foregroundColor: Colors.white,

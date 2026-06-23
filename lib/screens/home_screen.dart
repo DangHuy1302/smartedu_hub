@@ -36,6 +36,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
       appBar: AppBar(
+        automaticallyImplyLeading: false, // Xóa nút quay lại thừa sau khi đăng nhập
         title: const Row(
           children: [
             Icon(Icons.school, color: Colors.white, size: 28),
@@ -54,24 +55,24 @@ class _HomeScreenState extends State<HomeScreen> {
             _navButton(context, 'Phòng Pomodoro', '/pomodoro'),
             _navButton(context, 'Máy quét OCR', '/ocr'),
             _navButton(context, 'Kho Audio', '/document'),
-            StreamBuilder<User?>(
-              stream: _authStream,
-              builder: (context, snapshot) {
-                if (snapshot.hasData && snapshot.data != null) {
-                  return _buildUserAvatar(context, snapshot.data!);
-                } else {
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                    child: TextButton.icon(
-                      onPressed: () => Navigator.pushNamed(context, '/auth'),
-                      icon: const Icon(Icons.login, color: Colors.white),
-                      label: const Text('Đăng nhập', style: TextStyle(color: Colors.white)),
-                    ),
-                  );
-                }
-              },
-            ),
           ],
+          StreamBuilder<User?>(
+            stream: _authStream,
+            builder: (context, snapshot) {
+              if (snapshot.hasData && snapshot.data != null) {
+                return _buildUserAvatar(context, snapshot.data!);
+              } else {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                  child: TextButton.icon(
+                    onPressed: () => Navigator.pushNamed(context, '/auth'),
+                    icon: const Icon(Icons.login, color: Colors.white),
+                    label: const Text('Đăng nhập', style: TextStyle(color: Colors.white)),
+                  ),
+                );
+              }
+            },
+          ),
         ],
       ),
       body: SingleChildScrollView(
@@ -235,6 +236,8 @@ class _HomeScreenState extends State<HomeScreen> {
         onSelected: (value) async {
           if (value == 'logout') {
             await _googleSignInService.signOut();
+          } else if (value == 'profile') {
+            Navigator.pushNamed(context, '/profile');
           }
         },
         itemBuilder: (BuildContext context) => [

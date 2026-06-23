@@ -25,14 +25,22 @@ class PomodoroService {
     });
   }
 
-  /// Kết thúc phiên học và xóa thông tin phòng
-  Future<void> endPomodoro({
+  /// Kết thúc phiên học và trả về số điểm tích lũy được
+  Future<int> endPomodoro({
     required String uid,
     required int initialSeconds,
     required int secondsRemaining,
   }) async {
     final int secondsSpent = (initialSeconds - secondsRemaining).clamp(0, initialSeconds);
-    final int minutes = (secondsSpent ~/ 60);
+    
+    // Logic tính điểm: 1 phút học = 1 điểm. 
+    // Sử dụng round() để làm tròn theo mốc 30 giây.
+    int points = (secondsSpent / 60).round();
+    
+    // NGƯỠNG KHÍCH LỆ: Chỉ cần học trên 10 giây là được ít nhất 1 điểm thay vì 0 điểm.
+    if (points == 0 && secondsSpent >= 10) {
+      points = 1;
+    }
 
     final userRef = _firestore.collection('users').doc(uid);
     final sessionRef = _firestore.collection('pomodoro_sessions').doc();
@@ -41,29 +49,32 @@ class PomodoroService {
       transaction.set(sessionRef, {
         'sessionId': sessionRef.id,
         'userId': uid,
-        'durationMinutes': minutes,
+        'durationMinutes': points,
         'secondsSpent': secondsSpent,
         'startedAt': FieldValue.serverTimestamp(),
         'endedAt': FieldValue.serverTimestamp(),
         'awarded': true,
       });
 
-      if (minutes > 0) {
+      if (points > 0) {
         transaction.update(userRef, {
-          'studyPoints': FieldValue.increment(minutes),
+          'studyPoints': FieldValue.increment(points),
         });
       }
 
+      // Xóa các trạng thái Pomodoro để bắt đầu lại lần sau
       transaction.update(userRef, {
         'isPomodoroActive': false,
         'status': FieldValue.delete(),
-        'currentRoomId': FieldValue.delete(), // Xóa phòng khi kết thúc
+        'currentRoomId': FieldValue.delete(), 
         'pomodoroRemainingSeconds': FieldValue.delete(),
         'pomodoroStartedAt': FieldValue.delete(),
         'pomodoroLeftAt': FieldValue.delete(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
     });
+
+    return points;
   }
 
   Future<void> pausePomodoro({required String uid, required int remainingSeconds}) async {
@@ -103,7 +114,6 @@ class PomodoroService {
     });
   }
 
-  /// Lấy tất cả thành viên trong cùng một phòng (dựa vào currentRoomId)
   Stream<List<Map<String, dynamic>>> activeMembersStream(String? roomId) {
     if (roomId == null) return Stream.value([]);
     
@@ -116,7 +126,6 @@ class PomodoroService {
           return snap.docs
               .map((d) => {...d.data(), 'uid': d.id})
               .where((member) {
-                // Nếu đang ở trạng thái 'left' quá 30 phút thì ẩn
                 if (member['status'] == 'left') {
                   final leftAt = (member['pomodoroLeftAt'] as Timestamp?)?.toDate();
                   if (leftAt != null && now.difference(leftAt).inMinutes >= 30) {
