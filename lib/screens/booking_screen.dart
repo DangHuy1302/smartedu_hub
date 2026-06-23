@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import '../services/rooms_service.dart';
 import '../services/zoho_form_service.dart';
 import '../services/email_service.dart';
-
+import '../services/rooms_service.dart';  
+import 'package:firebase_auth/firebase_auth.dart';
+import 'pomodoro_screen.dart';
 class BookingScreen extends StatefulWidget {
   const BookingScreen({super.key});
 
@@ -21,6 +21,7 @@ class _BookingScreenState extends State<BookingScreen> {
   @override
   void initState() {
     super.initState();
+    // Khởi tạo stream ở initState để tránh việc tạo lại stream mỗi khi build gây lỗi trên Web
     _roomsStream = _roomsService.streamRooms();
   }
 
@@ -80,7 +81,7 @@ class _BookingScreenState extends State<BookingScreen> {
 
   Widget _buildMap(LatLng center, List<Map<String, dynamic>> rooms, Map<String, Map<String, dynamic>> bookedByMe) {
     return FlutterMap(
-      key: const ValueKey('booking_map_widget'),
+      key: const ValueKey('booking_map_widget'), // Thêm key để Flutter quản lý widget tốt hơn trên Web
       options: MapOptions(
         initialCenter: center,
         initialZoom: 17.0,
@@ -167,47 +168,54 @@ class _BookingBottomSheetState extends State<_BookingBottomSheet> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final bool isBookedByMe = widget.location['isBookedByMe'] == true;
+Widget build(BuildContext context) {
+  final bool isBookedByMe = widget.location['isBookedByMe'] == true;
 
-    return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Center(
-            child: Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)),
+  return Container(
+    decoration: const BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+    ),
+    padding: const EdgeInsets.all(24),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Thanh kéo nhỏ trên đầu bottom sheet
+        Center(
+          child: Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.grey[300], 
+              borderRadius: BorderRadius.circular(2),
             ),
           ),
-          const SizedBox(height: 24),
-          Text(
-            widget.location['name'],
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              const Icon(Icons.info_outline, size: 18, color: Colors.blue),
-              const SizedBox(width: 8),
-              Text(
-                'Còn ${widget.location['availableSeats']} / ${widget.location['totalSeats']} chỗ trống',
-                style: TextStyle(
-                  fontSize: 16, 
-                  fontWeight: FontWeight.w600,
-                  color: widget.location['availableSeats'] > 0 ? Colors.green : Colors.red,
-                ),
+        ),
+        const SizedBox(height: 24),
+        Text(
+          widget.location['name'] ?? 'Phòng học',
+          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            const Icon(Icons.info_outline, size: 18, color: Colors.blue),
+            const SizedBox(width: 8),
+            Text(
+              'Còn ${widget.location['availableSeats']} / ${widget.location['totalSeats']} chỗ trống',
+              style: TextStyle(
+                fontSize: 16, 
+                fontWeight: FontWeight.w600,
+                color: (widget.location['availableSeats'] ?? 0) > 0 ? Colors.green : Colors.red,
               ),
-            ],
-          ),
-          const Divider(height: 40),
+            ),
+          ],
+        ),
+        const Divider(height: 40),
+        
+        // KIỂM TRA ĐIỀU KIỆN UI: Nếu BẠN CHƯA ĐẶT PHÒNG NÀY
+        if (!isBookedByMe) ...[
           const Text('Số lượng ghế muốn đặt (Tối đa 5):', style: TextStyle(fontSize: 16)),
           const SizedBox(height: 16),
           Row(
@@ -220,148 +228,139 @@ class _BookingBottomSheetState extends State<_BookingBottomSheet> {
                 child: Text('$_seatCount', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
               ),
               _counterButton(Icons.add, () {
-                if (_seatCount < 5 && _seatCount < widget.location['seats']) {
+                if (_seatCount < 5 && _seatCount < (widget.location['availableSeats'] ?? 0)) {
                   setState(() => _seatCount++);
                 }
               }),
               const Spacer(),
               ElevatedButton(
-                onPressed: widget.location['seats'] > 0 ? () async {
+                onPressed: (widget.location['availableSeats'] ?? 0) > 0 ? () async {
+                  final user = FirebaseAuth.instance.currentUser;
+                  if (user == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Vui lòng đăng nhập'))
+                    );
+                    return;
+                  }
+
+                  try {
+                    // 1. Tiến hành gọi Service đặt chỗ lên Firebase Database
+                    await widget.roomsService.bookRoom(
+                      userId: user.uid,
+                      roomId: widget.location['id'],
+                      seatCount: _seatCount,
+                      bookingDate: DateTime.now(),
+                      startTime: 'Bây giờ',
+                      endTime: 'Kết thúc học',
+                    );
+
+                    // 2. Gửi email xác nhận thành công (Tự động lấy email từ User đang đăng nhập)
                     await sendBookingEmail(
-                      toEmail: 'levandan123321@gmail.com', 
+                      toEmail: user.email ?? 'levandan123321@gmail.com', 
                       bookingId: 'SEH-123456',
                       roomName: widget.location['name'] ?? 'Phong hoc',
                     );
 
                     if (!context.mounted) return;
-                    Navigator.pop(context);
+                    Navigator.pop(context); // Đóng BottomSheet/Modal
+                    
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content: Text('Dat cho thanh cong! Email xac nhan da duoc gui.'),
+                        content: Text('🎉 Đặt chỗ thành công! Email xác nhận đã được gửi.'),
                         backgroundColor: Colors.green,
                       )
                     );
-                  } : null,
+                  } catch (e) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Lỗi: ${e.toString()}'))
+                    );
+                  }
+                } : null,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFFF9800), // Cam nhấn (Màu 4)
+                  backgroundColor: const Color(0xFFFF9800), // Cam nhấn
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                _counterButton(Icons.add, () {
-                  if (_seatCount < 5 && _seatCount < widget.location['availableSeats']) {
-                    setState(() => _seatCount++);
-                  }
-                }),
-                const Spacer(),
-                ElevatedButton(
-                  onPressed: widget.location['availableSeats'] > 0 ? () async {
-                    final user = FirebaseAuth.instance.currentUser;
-                    if (user == null) {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vui lòng đăng nhập')));
-                      return;
-                    }
-
-                    try {
-                      await widget.roomsService.bookRoom(
-                        userId: user.uid,
-                        roomId: widget.location['id'],
-                        seatCount: _seatCount,
-                        bookingDate: DateTime.now(),
-                        startTime: 'Bây giờ',
-                        endTime: 'Kết thúc học',
-                      );
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('🎉 Đặt chỗ thành công!'), backgroundColor: Colors.green)
-                      );
-                    } catch (e) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Lỗi: ${e.toString()}')));
-                    }
-                  } : null,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFFF9800),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  child: const Text('Giữ chỗ ngay', style: TextStyle(fontWeight: FontWeight.bold)),
-                ),
-              ],
-            ),
-          ] else ...[
-            const Text('Bạn đã đặt chỗ tại phòng này.', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      Navigator.pushNamed(context, '/pomodoro');
-                    },
-                    icon: const Icon(Icons.timer),
-                    label: const Text('Học tại phòng này'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF1565C0),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                ElevatedButton(
-                  onPressed: () async {
-                    try {
-                      await widget.roomsService.cancelBooking(bookingId: widget.location['bookingId']);
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã hủy đặt chỗ.')));
-                    } catch (e) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Lỗi: $e')));
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.redAccent,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  child: const Text('Hủy'),
-                ),
-              ],
-            ),
-          ],
-          const SizedBox(height: 20),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () => openZohoForm(),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                child: const Text('Giữ chỗ ngay', style: TextStyle(fontWeight: FontWeight.bold)),
               ),
-              child: const Text('Đánh giá phòng học', style: TextStyle(fontWeight: FontWeight.bold)),
-            ),
+            ],
+          ),
+        ] else ...[
+          // KIỂM TRA ĐIỀU KIỆN UI: Nếu BẠN ĐÃ ĐẶT PHÒNG RỒI
+          const Text('Bạn đã đặt chỗ tại phòng này.', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => const PomodoroScreen()));
+                  },
+                  icon: const Icon(Icons.timer),
+                  label: const Text('Vào phòng Pomodoro'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1565C0),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              ElevatedButton(
+                onPressed: () async {
+                  try {
+                    await widget.roomsService.cancelBooking(bookingId: widget.location['bookingId']);
+                    if (!context.mounted) return;
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã hủy đặt chỗ.')));
+                  } catch (e) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Lỗi: $e')));
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.redAccent,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: const Text('Hủy'),
+              ),
+            ],
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _counterButton(IconData icon, VoidCallback onPressed) {
-    return InkWell(
-      onTap: onPressed,
-      child: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.grey[300]!),
-          borderRadius: BorderRadius.circular(8),
+        const SizedBox(height: 20),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: () => openZohoForm(),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text('Đánh giá phòng học', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
         ),
-        child: Icon(icon, color: const Color(0xFF1565C0)),
+      ],
+    ),
+  );
+}
+
+Widget _counterButton(IconData icon, VoidCallback onPressed) {
+  return InkWell(
+    onTap: onPressed,
+    child: Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey[300]!),
+        borderRadius: BorderRadius.circular(8),
       ),
-    );
+      child: Icon(icon, color: const Color(0xFF1565C0)),
+    ),
+  );
   }
 }
