@@ -14,11 +14,15 @@ class PomodoroService {
     if (roomId != null) {
       data['currentRoomId'] = roomId;
     }
-    await _firestore.collection('users').doc(uid).set(data, SetOptions(merge: true));
+    await _firestore
+        .collection('users')
+        .doc(uid)
+        .set(data, SetOptions(merge: true));
   }
 
   /// Cập nhật thời gian còn lại định kỳ
-  Future<void> syncRemainingTime({required String uid, required int remainingSeconds}) async {
+  Future<void> syncRemainingTime(
+      {required String uid, required int remainingSeconds}) async {
     await _firestore.collection('users').doc(uid).update({
       'pomodoroRemainingSeconds': remainingSeconds,
       'updatedAt': FieldValue.serverTimestamp(),
@@ -31,12 +35,13 @@ class PomodoroService {
     required int initialSeconds,
     required int secondsRemaining,
   }) async {
-    final int secondsSpent = (initialSeconds - secondsRemaining).clamp(0, initialSeconds);
-    
-    // Logic tính điểm: 1 phút học = 1 điểm. 
+    final int secondsSpent =
+        (initialSeconds - secondsRemaining).clamp(0, initialSeconds);
+
+    // Logic tính điểm: 1 phút học = 1 điểm.
     // Sử dụng round() để làm tròn theo mốc 30 giây.
     int points = (secondsSpent / 60).round();
-    
+
     // NGƯỠNG KHÍCH LỆ: Chỉ cần học trên 10 giây là được ít nhất 1 điểm thay vì 0 điểm.
     if (points == 0 && secondsSpent >= 10) {
       points = 1;
@@ -66,7 +71,7 @@ class PomodoroService {
       transaction.update(userRef, {
         'isPomodoroActive': false,
         'status': FieldValue.delete(),
-        'currentRoomId': FieldValue.delete(), 
+        'currentRoomId': FieldValue.delete(),
         'pomodoroRemainingSeconds': FieldValue.delete(),
         'pomodoroStartedAt': FieldValue.delete(),
         'pomodoroLeftAt': FieldValue.delete(),
@@ -77,7 +82,8 @@ class PomodoroService {
     return points;
   }
 
-  Future<void> pausePomodoro({required String uid, required int remainingSeconds}) async {
+  Future<void> pausePomodoro(
+      {required String uid, required int remainingSeconds}) async {
     await _firestore.collection('users').doc(uid).set({
       'isPomodoroActive': false,
       'status': 'paused',
@@ -94,12 +100,14 @@ class PomodoroService {
     }, SetOptions(merge: true));
   }
 
-  Future<void> leavePomodoro({required String uid, required int remainingSeconds}) async {
+  Future<void> leavePomodoro(
+      {required String uid, required int remainingSeconds}) async {
     await _firestore.collection('users').doc(uid).set({
       'isPomodoroActive': false,
       'status': 'left',
       'pomodoroRemainingSeconds': remainingSeconds,
       'pomodoroLeftAt': FieldValue.serverTimestamp(),
+      'currentRoomId': FieldValue.delete(),
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
   }
@@ -116,25 +124,22 @@ class PomodoroService {
 
   Stream<List<Map<String, dynamic>>> activeMembersStream(String? roomId) {
     if (roomId == null) return Stream.value([]);
-    
+
     return _firestore
         .collection('users')
         .where('currentRoomId', isEqualTo: roomId)
         .snapshots()
         .map((snap) {
-          final now = DateTime.now();
-          return snap.docs
-              .map((d) => {...d.data(), 'uid': d.id})
-              .where((member) {
-                if (member['status'] == 'left') {
-                  final leftAt = (member['pomodoroLeftAt'] as Timestamp?)?.toDate();
-                  if (leftAt != null && now.difference(leftAt).inMinutes >= 30) {
-                    return false;
-                  }
-                }
-                return true;
-              })
-              .toList();
-        });
+      final now = DateTime.now();
+      return snap.docs.map((d) => {...d.data(), 'uid': d.id}).where((member) {
+        if (member['status'] == 'left') {
+          final leftAt = (member['pomodoroLeftAt'] as Timestamp?)?.toDate();
+          if (leftAt != null && now.difference(leftAt).inMinutes >= 30) {
+            return false;
+          }
+        }
+        return true;
+      }).toList();
+    });
   }
 }

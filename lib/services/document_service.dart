@@ -23,9 +23,6 @@ class DocumentService {
       await _firestore.collection(_collection).doc(doc.documentId).update({'audioStatus': 'generating'});
 
       String textToRead = doc.extractedText;
-      if (doc.translatedText != null && doc.translatedText!.isNotEmpty) {
-        textToRead = doc.translatedText!;
-      }
 
       // 2. Gọi TTS với Timeout 30 giây (tránh treo vô hạn)
       final ttsService = TtsService();
