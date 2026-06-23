@@ -3,7 +3,8 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/rooms_service.dart';
-import 'pomodoro_screen.dart';
+import '../services/zoho_form_service.dart';
+import '../services/email_service.dart';
 
 class BookingScreen extends StatefulWidget {
   const BookingScreen({super.key});
@@ -20,7 +21,6 @@ class _BookingScreenState extends State<BookingScreen> {
   @override
   void initState() {
     super.initState();
-    // Khởi tạo stream ở initState để tránh việc tạo lại stream mỗi khi build gây lỗi trên Web
     _roomsStream = _roomsService.streamRooms();
   }
 
@@ -80,7 +80,7 @@ class _BookingScreenState extends State<BookingScreen> {
 
   Widget _buildMap(LatLng center, List<Map<String, dynamic>> rooms, Map<String, Map<String, dynamic>> bookedByMe) {
     return FlutterMap(
-      key: const ValueKey('booking_map_widget'), // Thêm key để Flutter quản lý widget tốt hơn trên Web
+      key: const ValueKey('booking_map_widget'),
       options: MapOptions(
         initialCenter: center,
         initialZoom: 17.0,
@@ -208,17 +208,45 @@ class _BookingBottomSheetState extends State<_BookingBottomSheet> {
             ],
           ),
           const Divider(height: 40),
-          if (!isBookedByMe) ...[
-            const Text('Số lượng ghế muốn đặt (Tối đa 5):', style: TextStyle(fontSize: 16)),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                _counterButton(Icons.remove, () {
-                  if (_seatCount > 1) setState(() => _seatCount--);
-                }),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                  child: Text('$_seatCount', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+          const Text('Số lượng ghế muốn đặt (Tối đa 5):', style: TextStyle(fontSize: 16)),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              _counterButton(Icons.remove, () {
+                if (_seatCount > 1) setState(() => _seatCount--);
+              }),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                child: Text('$_seatCount', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+              ),
+              _counterButton(Icons.add, () {
+                if (_seatCount < 5 && _seatCount < widget.location['seats']) {
+                  setState(() => _seatCount++);
+                }
+              }),
+              const Spacer(),
+              ElevatedButton(
+                onPressed: widget.location['seats'] > 0 ? () async {
+                    await sendBookingEmail(
+                      toEmail: 'levandan123321@gmail.com', 
+                      bookingId: 'SEH-123456',
+                      roomName: widget.location['name'] ?? 'Phong hoc',
+                    );
+
+                    if (!context.mounted) return;
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Dat cho thanh cong! Email xac nhan da duoc gui.'),
+                        backgroundColor: Colors.green,
+                      )
+                    );
+                  } : null,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFFF9800), // Cam nhấn (Màu 4)
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
                 _counterButton(Icons.add, () {
                   if (_seatCount < 5 && _seatCount < widget.location['availableSeats']) {
@@ -270,10 +298,10 @@ class _BookingBottomSheetState extends State<_BookingBottomSheet> {
                   child: ElevatedButton.icon(
                     onPressed: () {
                       Navigator.pop(context);
-                      Navigator.push(context, MaterialPageRoute(builder: (context) => const PomodoroScreen()));
+                      Navigator.pushNamed(context, '/pomodoro');
                     },
                     icon: const Icon(Icons.timer),
-                    label: const Text('Vào phòng Pomodoro'),
+                    label: const Text('Học tại phòng này'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF1565C0),
                       foregroundColor: Colors.white,
@@ -305,6 +333,19 @@ class _BookingBottomSheetState extends State<_BookingBottomSheet> {
             ),
           ],
           const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () => openZohoForm(),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: const Text('Đánh giá phòng học', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ),
         ],
       ),
     );
