@@ -5,7 +5,6 @@ class UserModel extends Equatable {
   final String uid;
   final String email;
   final String fullName;
-  final String? studentId;
   final String? avatarUrl;
   final int studyPoints;
   final int totalBookings;
@@ -18,7 +17,6 @@ class UserModel extends Equatable {
     required this.uid,
     required this.email,
     required this.fullName,
-    this.studentId,
     this.avatarUrl,
     this.studyPoints = 0,
     this.totalBookings = 0,
@@ -32,7 +30,6 @@ class UserModel extends Equatable {
     String? uid,
     String? email,
     String? fullName,
-    String? studentId,
     String? avatarUrl,
     int? studyPoints,
     int? totalBookings,
@@ -45,7 +42,6 @@ class UserModel extends Equatable {
       uid: uid ?? this.uid,
       email: email ?? this.email,
       fullName: fullName ?? this.fullName,
-      studentId: studentId ?? this.studentId,
       avatarUrl: avatarUrl ?? this.avatarUrl,
       studyPoints: studyPoints ?? this.studyPoints,
       totalBookings: totalBookings ?? this.totalBookings,
@@ -61,7 +57,6 @@ class UserModel extends Equatable {
       uid: documentId,
       email: json['email'] as String? ?? '',
       fullName: json['fullName'] as String? ?? '',
-      studentId: json['studentId'] as String?,
       avatarUrl: json['avatarUrl'] as String?,
       studyPoints: json['studyPoints'] as int? ?? 0,
       totalBookings: json['totalBookings'] as int? ?? 0,
@@ -76,7 +71,6 @@ class UserModel extends Equatable {
     return {
       'email': email,
       'fullName': fullName,
-      'studentId': studentId,
       'avatarUrl': avatarUrl,
       'studyPoints': studyPoints,
       'totalBookings': totalBookings,
@@ -88,5 +82,5 @@ class UserModel extends Equatable {
   }
 
   @override
-  List<Object?> get props => [uid, email, fullName, studentId, avatarUrl, studyPoints, totalBookings, isPomodoroActive, status, createdAt, updatedAt];
+  List<Object?> get props => [uid, email, fullName, avatarUrl, studyPoints, totalBookings, isPomodoroActive, status, createdAt, updatedAt];
 }

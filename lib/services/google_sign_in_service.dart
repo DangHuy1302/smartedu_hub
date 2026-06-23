@@ -1,16 +1,14 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'user_service.dart';
-import '../models/user.dart';
 
 class GoogleSignInService {
   static final GoogleSignInService _instance = GoogleSignInService._internal();
 
-  final GoogleSignIn _googleSignIn = GoogleSignIn(
-    clientId: '681946323599-nscvoc269s7ejd6j5gthlt6qfn0r577s.apps.googleusercontent.com',
-  );
   final FirebaseAuth _firebaseAuth = FirebaseAuth.instance;
+  final GoogleSignIn _googleSignIn = GoogleSignIn(
+    scopes: ['email', 'profile', 'openid'],
+  );
 
   factory GoogleSignInService() {
     return _instance;
@@ -24,14 +22,10 @@ class GoogleSignInService {
       // Trigger the authentication flow
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
 
-      if (googleUser == null) {
-        // The user canceled the sign-in flow
-        return null;
-      }
+      if (googleUser == null) return null; // User cancelled
 
-      // Obtain the auth details from the user
-      final GoogleSignInAuthentication googleAuth =
-          await googleUser.authentication;
+      // Obtain the auth details from the request
+      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
 
       // Create a new credential
       final credential = GoogleAuthProvider.credential(
@@ -39,30 +33,9 @@ class GoogleSignInService {
         idToken: googleAuth.idToken,
       );
 
-      // Sign in to Firebase with the Google credential
-      final userCredential =
-          await _firebaseAuth.signInWithCredential(credential);
-
-      // Ensure Firestore user document exists / is synced
-      final user = userCredential.user;
-      if (user != null) {
-        final userModel = UserModel(
-          uid: user.uid,
-          email: user.email ?? '',
-          fullName: user.displayName ?? '',
-          studyPoints: 0,
-          totalBookings: 0,
-          status: 'offline',
-          isPomodoroActive: false,
-          createdAt: DateTime.now(),
-          updatedAt: DateTime.now(),
-        );
-        await UserService().saveUser(userModel);
-      }
-
-      return userCredential;
+      // Once signed in, return the UserCredential
+      return await _firebaseAuth.signInWithCredential(credential);
     } catch (e) {
-      // Handle both Firebase and Google Sign-In errors uniformly
       debugPrint('Sign-In Error: ${e.toString()}');
       rethrow;
     }
@@ -81,11 +54,6 @@ class GoogleSignInService {
 
   /// Get current user
   User? get currentUser => _firebaseAuth.currentUser;
-
-  /// Get Google Sign-In user
-  Future<GoogleSignInAccount?> get signedInUser async {
-    return await _googleSignIn.signInSilently();
-  }
 
   /// Check if user is signed in
   bool get isSignedIn => _firebaseAuth.currentUser != null;
